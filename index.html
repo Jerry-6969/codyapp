@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f7f3ec">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Codyapp">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐱</text></svg>">
+<title>Codyapp — Cody 的照護日誌</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root{
+    --bg:#f7f3ec; --card:#ffffff; --ink:#3b332c; --ink2:#8a7f73;
+    --brand:#e08a4c; --brand-soft:#fbe8d8; --line:#efe8dd;
+    --green:#4caf7d; --green-soft:#e3f4ea;
+    --yellow:#e0a11f; --yellow-soft:#faf0d4;
+    --red:#dd5b5b; --red-soft:#fbe3e3;
+    --radius:16px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  /* iOS：html 也鋪底色，橡皮筋回彈時不會露出白底 */
+  html{background:var(--bg);}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
+    font-size:16px; line-height:1.5;
+    min-height:100svh;
+    /* 上方留 iOS 狀態列安全區（加入主畫面的 standalone 模式），下方留固定導覽列高度 */
+    padding-top:env(safe-area-inset-top);
+    padding-bottom:calc(72px + env(safe-area-inset-bottom));
+  }
+  main{max-width:560px;margin:0 auto;padding:16px 16px 24px;}
+  h1,h2,h3{margin:0;}
+  h2{font-size:17px;margin:22px 0 10px;display:flex;align-items:center;gap:6px;}
+  .muted{color:var(--ink2);font-size:13px;}
+  .card{background:var(--card);border-radius:var(--radius);padding:14px 16px;
+        box-shadow:0 1px 3px rgba(90,70,50,.06);border:1px solid var(--line);}
+  button{font-family:inherit;border:none;cursor:pointer;}
+  input,select,textarea{
+    font-family:inherit;font-size:16px;color:var(--ink);
+    border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+    background:#fff;width:100%;
+  }
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--brand-soft);border-color:var(--brand);}
+  label.f{display:block;margin:12px 0 4px;font-size:13px;color:var(--ink2);font-weight:600;}
+
+  /* ---------- top pet header ---------- */
+  .pet-head{display:flex;align-items:center;gap:14px;padding:6px 2px 2px;}
+  .avatar{width:76px;height:76px;border-radius:50%;object-fit:cover;background:var(--brand-soft);
+          display:flex;align-items:center;justify-content:center;font-size:36px;border:3px solid #fff;
+          box-shadow:0 2px 6px rgba(90,70,50,.15);flex:0 0 76px;overflow:hidden;}
+  .avatar img{width:100%;height:100%;object-fit:cover;}
+  .pet-head .name{font-size:22px;font-weight:800;}
+  .pet-head .sub{font-size:13px;color:var(--ink2);}
+  .pet-head .kg{font-size:14px;font-weight:700;color:var(--brand);}
+
+  /* ---------- care cards ---------- */
+  .care-row{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+  .care-card{border-radius:var(--radius);padding:12px 14px;border:1px solid var(--line);background:#fff;text-align:left;}
+  .care-card .t{font-size:14px;font-weight:700;}
+  .care-card .d{font-size:20px;font-weight:800;margin-top:2px;}
+  .care-card .c{font-size:12px;color:var(--ink2);}
+  .care-card.ok{background:var(--green-soft);border-color:#cbe8d7;}
+  .care-card.ok .d{color:var(--green);}
+  .care-card.warn{background:var(--yellow-soft);border-color:#efdfae;}
+  .care-card.warn .d{color:var(--yellow);}
+  .care-card.due{background:var(--red-soft);border-color:#f2c4c4;}
+  .care-card.due .d{color:var(--red);}
+
+  /* ---------- quick buttons ---------- */
+  .quick-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+  .quick-btn{border-radius:var(--radius);padding:18px 10px;font-size:16px;font-weight:800;
+             background:var(--brand);color:#fff;display:flex;flex-direction:column;align-items:center;gap:4px;
+             box-shadow:0 2px 6px rgba(224,138,76,.35);}
+  .quick-btn .ic{font-size:26px;}
+  .quick-btn.alt{background:#fff;color:var(--ink);border:1px solid var(--line);box-shadow:none;font-weight:700;padding:12px 10px;}
+  .quick-sub{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px;}
+
+  /* ---------- summary chips ---------- */
+  .mini-list{display:flex;flex-direction:column;gap:8px;}
+  .mini-item{display:flex;justify-content:space-between;align-items:center;gap:8px;
+             background:#fff;border:1px solid var(--line);border-radius:12px;padding:9px 12px;font-size:14px;}
+  .mini-item .when{color:var(--ink2);font-size:12px;flex:0 0 auto;}
+  .tag{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;background:var(--brand-soft);color:#a05a24;margin-right:6px;}
+  .tag.sym{background:var(--red-soft);color:var(--red);}
+  .tag.care{background:var(--green-soft);color:#2c7d55;}
+  .tag.med{background:#e5ecf9;color:#3a62ad;}
+  .tag.wt{background:#efe5f9;color:#7a4fb0;}
+  .tag.treat{background:#fdf3d0;color:#9a7407;}
+
+  /* ---------- chips (selectable) ---------- */
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{border-radius:999px;border:1.5px solid var(--line);background:#fff;color:var(--ink);
+        padding:8px 14px;font-size:14px;font-weight:600;}
+  .chip.on{background:var(--brand);border-color:var(--brand);color:#fff;}
+  .chip.big{padding:12px 16px;font-size:15px;}
+
+  /* ---------- modal ---------- */
+  .modal-back{position:fixed;inset:0;background:rgba(50,40,30,.45);display:none;z-index:50;
+              align-items:flex-end;justify-content:center;}
+  .modal-back.show{display:flex;}
+  .modal{background:var(--bg);width:100%;max-width:560px;max-height:88vh;overflow-y:auto;
+         border-radius:20px 20px 0 0;padding:18px 18px calc(20px + env(safe-area-inset-bottom));}
+  .modal h3{font-size:18px;display:flex;justify-content:space-between;align-items:center;}
+  .modal .x{background:none;font-size:22px;color:var(--ink2);padding:4px 8px;}
+  .btn{display:block;width:100%;border-radius:12px;padding:14px;font-size:16px;font-weight:800;
+       background:var(--brand);color:#fff;margin-top:18px;}
+  .btn.sec{background:#fff;color:var(--ink);border:1px solid var(--line);font-weight:700;}
+  .btn.danger{background:var(--red);}
+  .btn.small{padding:9px 12px;font-size:14px;margin-top:8px;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+
+  /* ---------- bottom nav ---------- */
+  nav.tabs{position:fixed;left:0;right:0;bottom:0;background:#fffdfa;border-top:1px solid var(--line);
+           display:flex;z-index:40;padding-bottom:env(safe-area-inset-bottom);}
+  nav.tabs button{flex:1;background:none;padding:9px 0 7px;font-size:11px;color:var(--ink2);
+                  display:flex;flex-direction:column;align-items:center;gap:1px;font-weight:600;}
+  nav.tabs button .ic{font-size:21px;}
+  nav.tabs button.on{color:var(--brand);}
+
+  /* ---------- history ---------- */
+  .filter-bar{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;-webkit-overflow-scrolling:touch;}
+  .filter-bar .chip{flex:0 0 auto;}
+  .h-item{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;
+          display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
+  .h-item .del{background:none;color:var(--ink2);font-size:16px;padding:2px 4px;flex:0 0 auto;}
+  .h-main{font-size:14px;}
+  .h-sub{font-size:12px;color:var(--ink2);margin-top:2px;white-space:pre-wrap;}
+
+  /* ---------- vet mode ---------- */
+  .vet-sec{margin-bottom:14px;}
+  .vet-sec h3{font-size:15px;margin-bottom:8px;color:#a05a24;}
+  .vet-line{font-size:14px;padding:5px 0;border-bottom:1px dashed var(--line);display:flex;gap:8px;}
+  .vet-line .d{color:var(--ink2);font-size:12px;flex:0 0 74px;}
+  .sev{font-size:11px;font-weight:800;border-radius:6px;padding:1px 6px;}
+  .sev.mild{background:var(--green-soft);color:#2c7d55;}
+  .sev.mid{background:var(--yellow-soft);color:#96700d;}
+  .sev.severe{background:var(--red-soft);color:var(--red);}
+
+  .chart-box{position:relative;height:190px;}
+  .lab-chart{position:relative;height:170px;margin-top:8px;}
+
+  .empty{padding:20px;text-align:center;color:var(--ink2);font-size:14px;}
+  .ok-banner{background:var(--green-soft);border:1px solid #cbe8d7;color:#2c7d55;
+             border-radius:12px;padding:12px;text-align:center;font-weight:700;}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));
+         background:var(--ink);color:#fff;border-radius:999px;padding:9px 18px;font-size:14px;z-index:60;
+         opacity:0;transition:opacity .25s;pointer-events:none;}
+  .toast.show{opacity:.95;}
+  .lib-grid{display:flex;flex-wrap:wrap;gap:8px;max-height:180px;overflow-y:auto;}
+  .kv-row{display:grid;grid-template-columns:1fr 1fr 34px;gap:8px;margin-top:8px;align-items:center;}
+  .kv-row button{background:none;color:var(--red);font-size:18px;}
+  .care-def-row{display:grid;grid-template-columns:1fr 84px 34px;gap:8px;margin-top:8px;align-items:center;}
+  details{margin-top:10px;}
+  details summary{font-size:14px;font-weight:700;color:var(--brand);cursor:pointer;}
+  .set-block{margin-bottom:14px;}
+  .sync-status{font-size:13px;margin-top:8px;}
+  .sync-status.ok{color:var(--green);} .sync-status.err{color:var(--red);}
+  .countdown-card{display:flex;align-items:center;gap:12px;}
+  .countdown-card .num{font-size:26px;font-weight:800;color:var(--brand);}
+
+  @media print{
+    body{padding:0;background:#fff;}
+    nav.tabs, .no-print{display:none !important;}
+    .card{box-shadow:none;}
+  }
+</style>
+</head>
+<body>
+
+<main id="app"></main>
+
+<nav class="tabs no-print" id="tabs">
+  <button data-v="home"><span class="ic">🏠</span>首頁</button>
+  <button data-v="history"><span class="ic">📋</span>紀錄</button>
+  <button data-v="vet"><span class="ic">🩺</span>看診</button>
+  <button data-v="album"><span class="ic">📷</span>相簿</button>
+  <button data-v="settings"><span class="ic">⚙️</span>設定</button>
+</nav>
+
+<div class="modal-back" id="modalBack"><div class="modal" id="modalBox"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   Codyapp v1 — Cody 的電子病歷本 + 照護儀表板
+   單一 HTML 檔、vanilla JS、localStorage + Google Drive 同步
+===================================================================== */
+
+// ---------------------------------------------------------------- consts
+const LS_KEY = 'codyapp-data';
+const LS_DEVICE = 'codyapp-device';   // 裝置層設定：記錄者、Drive clientId/folderId
+const DATA_FILENAME = 'cody-data.json';
+
+const RATINGS = { ate_all:'😻 吃光', half:'😐 剩一半', refused:'🙈 聞了就走' };
+const PROTEINS = ['雞','魚','牛','鴨','羊','混合'];
+const SYMPTOM_TYPES = { vomit:'嘔吐', soft_stool:'軟便', no_appetite:'拒食', itchy:'皮膚搔癢', other:'其他' };
+const VOMIT_CONTENTS = { hairball:'毛球', undigested:'未消化食物', yellow:'黃水', foam:'白沫', other:'其他' };
+const SEVERITIES = { mild:'輕', mid:'中', severe:'重' };
+const USERS = ['Jerry','Phoebe'];
+
+// ---------------------------------------------------------------- utils
+const $ = s => document.querySelector(s);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const nowISO = () => new Date().toISOString();
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const alive = arr => (arr || []).filter(x => !x.deleted);
+
+function fmtDT(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleString('zh-TW', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit', hour12:false});
+}
+function fmtDate(s){
+  if(!s) return '';
+  const d = new Date(s);
+  return d.toLocaleDateString('zh-TW', {year:'numeric', month:'numeric', day:'numeric'});
+}
+function fmtShortDate(s){
+  const d = new Date(s);
+  return d.toLocaleDateString('zh-TW', {month:'numeric', day:'numeric'});
+}
+function daysSince(iso){
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+}
+function daysUntil(dateStr){
+  const t = new Date(dateStr); t.setHours(0,0,0,0);
+  const n = new Date(); n.setHours(0,0,0,0);
+  return Math.round((t - n) / 86400000);
+}
+function ageString(birth){
+  const b = new Date(birth), n = new Date();
+  let months = (n.getFullYear() - b.getFullYear()) * 12 + (n.getMonth() - b.getMonth());
+  if(n.getDate() < b.getDate()) months--;
+  if(months < 0) months = 0;
+  return `${Math.floor(months / 12)} 歲 ${months % 12} 個月`;
+}
+function localInputNow(){
+  const d = new Date(), p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function todayInput(){
+  const d = new Date(), p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._tm);
+  t._tm = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ---------------------------------------------------------------- data layer
+function defaultData(){
+  return {
+    metadata: { version:'1.0', lastSync:'' },
+    petInfo: { name:'Cody', birthDate:'2024-02-26', breed:'美國短毛貓', photoUrl:'', updatedAt:'' },
+    mainFood: { brand:'', flavor:'', mealsPerDay:6, updatedAt:'', history:[] },
+    productLibrary: [],
+    feedings: [],
+    symptoms: [],
+    careTasks: {
+      definitions: [
+        { id:'nail',   name:'剪指甲', cycleDays:7,  updatedAt:'' },
+        { id:'ear',    name:'洗耳朵', cycleDays:7,  updatedAt:'' },
+        { id:'teeth',  name:'刷牙',   cycleDays:3,  updatedAt:'' },
+        { id:'deworm', name:'驅蟲藥', cycleDays:30, updatedAt:'' }
+      ],
+      logs: []
+    },
+    medical: [],
+    weights: []
+  };
+}
+
+let data = loadData();
+let device = loadDevice();
+let currentView = 'home';
+let charts = [];
+
+function loadData(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return defaultData();
+    const d = JSON.parse(raw);
+    return mergeData(defaultData(), d);   // 補齊缺欄位並保留資料
+  }catch(e){
+    console.error('讀取 localStorage 失敗', e);
+    return defaultData();
+  }
+}
+function loadDevice(){
+  try{ return JSON.parse(localStorage.getItem(LS_DEVICE)) || {}; }
+  catch(e){ return {}; }
+}
+function saveDevice(){ localStorage.setItem(LS_DEVICE, JSON.stringify(device)); }
+
+function saveData(opts = {}){
+  localStorage.setItem(LS_KEY, JSON.stringify(data));
+  if(opts.rerender !== false) render();
+  if(opts.sync !== false) scheduleSync();
+}
+
+// 追加式合併：陣列以 id 去重、取 updatedAt/timestamp 較新者；物件取 updatedAt 較新者
+function mergeById(a = [], b = []){
+  const stamp = x => x.updatedAt || x.timestamp || x.changedAt || x.date || '';
+  const m = new Map();
+  for(const item of [...a, ...b]){
+    if(!item || !item.id) continue;
+    const prev = m.get(item.id);
+    if(!prev || stamp(item) >= stamp(prev)) m.set(item.id, item);
+  }
+  return [...m.values()];
+}
+function newerObj(a, b){
+  if(!b) return a;
+  if(!a) return b;
+  return (b.updatedAt || '') > (a.updatedAt || '') ? b : a;
+}
+function mergeData(base, incoming){
+  const d = defaultData();
+  const a = base || d, b = incoming || {};
+  const out = {};
+  out.metadata = { version:'1.0',
+    lastSync: [(a.metadata||{}).lastSync||'', (b.metadata||{}).lastSync||''].sort().pop() };
+  out.petInfo  = { ...d.petInfo,  ...newerObj(a.petInfo,  b.petInfo)  };
+  const mfA = a.mainFood || d.mainFood, mfB = b.mainFood;
+  out.mainFood = { ...d.mainFood, ...newerObj(mfA, mfB) };
+  // 換糧歷史：聯集去重
+  const hm = new Map();
+  [...(mfA.history||[]), ...((mfB||{}).history||[])].forEach(h => {
+    if(h) hm.set(h.id || (h.changedAt + '|' + h.brand + '|' + h.flavor), h);
+  });
+  out.mainFood.history = [...hm.values()].sort((x,y) => (x.changedAt||'') < (y.changedAt||'') ? -1 : 1);
+  out.productLibrary = mergeById(a.productLibrary, b.productLibrary);
+  out.feedings = mergeById(a.feedings, b.feedings);
+  out.symptoms = mergeById(a.symptoms, b.symptoms);
+  out.careTasks = {
+    definitions: mergeById((a.careTasks||{}).definitions || d.careTasks.definitions,
+                           (b.careTasks||{}).definitions),
+    logs: mergeById((a.careTasks||{}).logs, (b.careTasks||{}).logs)
+  };
+  out.medical = mergeById(a.medical, b.medical);
+  out.weights = mergeById(a.weights, b.weights);
+  return out;
+}
+
+// ---------------------------------------------------------------- helpers on data
+function me(){ return device.user || ''; }
+function productById(id){ return (data.productLibrary || []).find(p => p.id === id); }
+function productLabel(p){ return p ? `${p.brand} ${p.flavor}`.trim() : '（未知產品）'; }
+function latestWeight(){
+  const ws = alive(data.weights).sort((a,b) => (a.date < b.date ? -1 : 1));
+  return ws.length ? ws[ws.length - 1] : null;
+}
+function lastCareLog(taskId){
+  const logs = alive(data.careTasks.logs).filter(l => l.taskId === taskId)
+    .sort((a,b) => (a.timestamp < b.timestamp ? -1 : 1));
+  return logs.length ? logs[logs.length - 1] : null;
+}
+function careStatus(def){
+  const last = lastCareLog(def.id);
+  if(!last) return { days:null, cls:'', txt:'尚未記錄' };
+  const days = daysSince(last.timestamp);
+  const ratio = days / def.cycleDays;
+  const cls = ratio >= 1 ? 'due' : (ratio >= 0.66 ? 'warn' : 'ok');
+  return { days, cls, txt:`已 ${days} 天` };
+}
+function nextMedicalDue(){
+  const today = todayInput();
+  const list = alive(data.medical).filter(m => m.nextDue)
+    .sort((a,b) => (a.nextDue < b.nextDue ? -1 : 1));
+  // 先找未來最近的；沒有未來的就顯示最近已逾期的
+  const future = list.filter(m => m.nextDue >= today);
+  if(future.length) return future[0];
+  return list.length ? list[list.length - 1] : null;
+}
+
+// ---------------------------------------------------------------- rendering
+function destroyCharts(){ charts.forEach(c => c.destroy()); charts = []; }
+
+function render(){
+  destroyCharts();
+  document.querySelectorAll('#tabs button').forEach(b =>
+    b.classList.toggle('on', b.dataset.v === currentView));
+  const app = $('#app');
+  if(currentView === 'home') app.innerHTML = viewHome();
+  else if(currentView === 'history') app.innerHTML = viewHistory();
+  else if(currentView === 'vet') app.innerHTML = viewVet();
+  else if(currentView === 'album') app.innerHTML = viewAlbum();
+  else app.innerHTML = viewSettings();
+  afterRender();
+}
+
+// ============================ 首頁 Dashboard ============================
+function viewHome(){
+  const p = data.petInfo;
+  const w = latestWeight();
+  const defs = alive(data.careTasks.definitions);
+  const due = nextMedicalDue();
+
+  let html = `
+  <div class="pet-head">
+    <div class="avatar" onclick="openPetPhoto()">${p.photoUrl ? `<img src="${p.photoUrl}" alt="Cody">` : '🐱'}</div>
+    <div>
+      <div class="name">${esc(p.name)}</div>
+      <div class="sub">${esc(p.breed)}｜${ageString(p.birthDate)}</div>
+      <div class="kg">${w ? `⚖️ ${w.kg} kg` : '尚未記錄體重'}</div>
+    </div>
+  </div>
+
+  <h2>🧼 照護提醒</h2>
+  <div class="care-row">
+    ${defs.map(d => {
+      const s = careStatus(d);
+      return `<button class="care-card ${s.cls}" onclick="openCareModal('${d.id}')">
+        <div class="t">${esc(d.name)}</div>
+        <div class="d">${s.days === null ? '—' : s.txt}</div>
+        <div class="c">週期 ${d.cycleDays} 天</div>
+      </button>`;
+    }).join('')}
+  </div>`;
+
+  if(due){
+    const n = daysUntil(due.nextDue);
+    html += `
+    <h2>🗓️ 醫療倒數</h2>
+    <div class="card countdown-card">
+      <div class="num">${n >= 0 ? n : '⚠️'}</div>
+      <div>
+        <div style="font-weight:700">${n >= 0 ? `距下次回診／疫苗還有 ${n} 天` : `已逾期 ${-n} 天`}</div>
+        <div class="muted">${fmtDate(due.nextDue)}｜${esc(due.reason || due.clinic || '醫療紀錄')}</div>
+      </div>
+    </div>`;
+  }
+
+  html += `
+  <h2>📈 體重趨勢</h2>
+  <div class="card">
+    ${alive(data.weights).length >= 2
+      ? '<div class="chart-box"><canvas id="weightChart"></canvas></div>'
+      : `<div class="empty">${alive(data.weights).length === 1 ? `目前 ${latestWeight().kg} kg，再記錄一筆就能畫出趨勢` : '尚無體重紀錄，點下方「體重」開始記錄'}</div>`}
+  </div>
+
+  <h2>🗒️ 最近 7 天</h2>
+  ${recent7Html()}
+
+  <h2>⚡ 快速記錄</h2>
+  <div class="quick-grid">
+    <button class="quick-btn" onclick="openFeedingModal('can')"><span class="ic">🥫</span>罐頭</button>
+    <button class="quick-btn" onclick="openSymptomModal()"><span class="ic">🤒</span>症狀</button>
+    <button class="quick-btn" onclick="openCareModal()"><span class="ic">🧼</span>照護</button>
+    <button class="quick-btn" onclick="openWeightModal()"><span class="ic">⚖️</span>體重</button>
+  </div>
+  <div class="quick-sub">
+    <button class="quick-btn alt" onclick="openFeedingModal('treat')"><span class="ic">🍖</span>零食</button>
+    <button class="quick-btn alt" onclick="openMedicalModal()"><span class="ic">🏥</span>醫療</button>
+  </div>`;
+  return html;
+}
+
+function recent7Html(){
+  const cutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+  const feeds = alive(data.feedings).filter(f => f.timestamp >= cutoff)
+    .sort((a,b) => (a.timestamp > b.timestamp ? -1 : 1));
+  const syms = alive(data.symptoms).filter(s => s.timestamp >= cutoff)
+    .sort((a,b) => (a.timestamp > b.timestamp ? -1 : 1));
+
+  let html = '<div class="mini-list">';
+  if(!feeds.length && !syms.length){
+    html += `<div class="empty">最近 7 天還沒有記錄</div></div>`;
+    return html;
+  }
+  for(const s of syms){
+    const t = SYMPTOM_TYPES[s.type] || s.type;
+    const extra = s.type === 'vomit' && s.vomitContent ? `（${VOMIT_CONTENTS[s.vomitContent] || s.vomitContent}）` : '';
+    html += `<div class="mini-item"><div><span class="tag sym">症狀</span>${esc(t)}${esc(extra)} <span class="sev ${s.severity}">${SEVERITIES[s.severity] || ''}</span></div><div class="when">${fmtDT(s.timestamp)}</div></div>`;
+  }
+  for(const f of feeds){
+    const p = productById(f.productId);
+    const cat = p && p.category === 'treat' ? '<span class="tag treat">零食</span>' : '<span class="tag">罐頭</span>';
+    html += `<div class="mini-item"><div>${cat}${esc(productLabel(p))} ${f.rating ? RATINGS[f.rating].split(' ')[0] : ''}</div><div class="when">${fmtDT(f.timestamp)}</div></div>`;
+  }
+  html += '</div>';
+  if(!syms.length){
+    html = `<div class="ok-banner" style="margin-bottom:8px">✅ 最近 7 天沒有症狀，一切正常</div>` + html;
+  }
+  return html;
+}
+
+// ============================ 紀錄列表 ============================
+let historyFilter = 'all';
+function viewHistory(){
+  const filters = [
+    ['all','全部'], ['can','罐頭'], ['treat','零食'], ['symptom','症狀'],
+    ['care','照護'], ['medical','醫療'], ['weight','體重']
+  ];
+  const items = buildHistoryItems().filter(i => historyFilter === 'all' || i.cat === historyFilter);
+  return `
+  <h1 style="font-size:20px;margin:6px 0 12px">📋 所有紀錄</h1>
+  <div class="filter-bar">
+    ${filters.map(([k,l]) => `<button class="chip ${historyFilter===k?'on':''}" onclick="setHistoryFilter('${k}')">${l}</button>`).join('')}
+  </div>
+  ${historyFilter === 'medical' ? '<div id="labChartsHolder"></div>' : ''}
+  ${items.length ? items.map(i => `
+    <div class="h-item">
+      <div>
+        <div class="h-main">${i.tag}${i.title}</div>
+        <div class="h-sub">${i.sub}</div>
+      </div>
+      <button class="del" onclick="deleteRecord('${i.src}','${i.id}')">🗑️</button>
+    </div>`).join('')
+    : '<div class="empty">沒有符合的紀錄</div>'}`;
+}
+function setHistoryFilter(f){ historyFilter = f; render(); }
+
+function buildHistoryItems(){
+  const items = [];
+  for(const f of alive(data.feedings)){
+    const p = productById(f.productId);
+    const isTreat = p && p.category === 'treat';
+    items.push({
+      id:f.id, src:'feedings', ts:f.timestamp, cat:isTreat ? 'treat' : 'can',
+      tag:isTreat ? '<span class="tag treat">零食</span>' : '<span class="tag">罐頭</span>',
+      title:esc(productLabel(p)) + (f.rating ? '｜' + RATINGS[f.rating] : ''),
+      sub:[fmtDT(f.timestamp), f.replacedLastMeal ? '取代最後一餐' : '', f.notes, f.recordedBy && `by ${f.recordedBy}`].filter(Boolean).join('｜')
+    });
+  }
+  for(const s of alive(data.symptoms)){
+    const extra = s.type === 'vomit' && s.vomitContent ? `（${VOMIT_CONTENTS[s.vomitContent] || s.vomitContent}）` : '';
+    items.push({
+      id:s.id, src:'symptoms', ts:s.timestamp, cat:'symptom',
+      tag:'<span class="tag sym">症狀</span>',
+      title:esc((SYMPTOM_TYPES[s.type] || s.type) + extra) + ` <span class="sev ${s.severity}">${SEVERITIES[s.severity] || ''}</span>`,
+      sub:[fmtDT(s.timestamp), s.notes, s.recordedBy && `by ${s.recordedBy}`].filter(Boolean).join('｜')
+    });
+  }
+  for(const l of alive(data.careTasks.logs)){
+    const def = (data.careTasks.definitions || []).find(d => d.id === l.taskId);
+    items.push({
+      id:l.id, src:'careLogs', ts:l.timestamp, cat:'care',
+      tag:'<span class="tag care">照護</span>',
+      title:esc(def ? def.name : l.taskId),
+      sub:[fmtDT(l.timestamp), l.notes, l.recordedBy && `by ${l.recordedBy}`].filter(Boolean).join('｜')
+    });
+  }
+  for(const m of alive(data.medical)){
+    const labs = Object.entries(m.labValues || {}).map(([k,v]) => `${k}: ${v}`).join('、');
+    items.push({
+      id:m.id, src:'medical', ts:m.date, cat:'medical',
+      tag:'<span class="tag med">醫療</span>',
+      title:esc(m.reason || '就診'),
+      sub:[fmtDate(m.date), m.clinic, m.diagnosis && `診斷：${m.diagnosis}`, m.treatment && `處置：${m.treatment}`,
+           labs, m.cost != null && m.cost !== '' && `費用 $${m.cost}`,
+           m.nextDue && `下次：${fmtDate(m.nextDue)}`, m.recordedBy && `by ${m.recordedBy}`].filter(Boolean).join('\n')
+    });
+  }
+  for(const w of alive(data.weights)){
+    items.push({
+      id:w.id, src:'weights', ts:w.date, cat:'weight',
+      tag:'<span class="tag wt">體重</span>',
+      title:`${w.kg} kg`,
+      sub:[fmtDate(w.date), w.recordedBy && `by ${w.recordedBy}`].filter(Boolean).join('｜')
+    });
+  }
+  for(const h of (data.mainFood.history || [])){
+    items.push({
+      id:h.id || h.changedAt, src:'foodHistory', ts:h.changedAt, cat:'can',
+      tag:'<span class="tag">主食</span>',
+      title:`換糧：${esc(h.brand)} ${esc(h.flavor)}`,
+      sub:fmtDate(h.changedAt)
+    });
+  }
+  return items.sort((a,b) => (a.ts > b.ts ? -1 : 1));
+}
+
+function deleteRecord(src, id){
+  if(!confirm('確定要刪除這筆紀錄嗎？')) return;
+  const mark = arr => {
+    const it = (arr || []).find(x => x.id === id);
+    if(it){ it.deleted = true; it.updatedAt = nowISO(); }
+  };
+  if(src === 'feedings') mark(data.feedings);
+  else if(src === 'symptoms') mark(data.symptoms);
+  else if(src === 'careLogs') mark(data.careTasks.logs);
+  else if(src === 'medical') mark(data.medical);
+  else if(src === 'weights') mark(data.weights);
+  else if(src === 'foodHistory'){
+    data.mainFood.history = (data.mainFood.history || []).filter(h => (h.id || h.changedAt) !== id);
+    data.mainFood.updatedAt = nowISO();
+  }
+  saveData();
+  toast('已刪除');
+}
+
+// ============================ 看診模式 ============================
+function viewVet(){
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+  const syms = alive(data.symptoms).filter(s => s.timestamp >= cutoff)
+    .sort((a,b) => (a.timestamp > b.timestamp ? -1 : 1));
+  const feeds = alive(data.feedings).filter(f => f.timestamp >= cutoff)
+    .sort((a,b) => (a.timestamp > b.timestamp ? -1 : 1));
+  const deworm = lastCareLog('deworm');
+  const meds = alive(data.medical).sort((a,b) => (a.date > b.date ? -1 : 1));
+  const lastMed = meds[0];
+  const w = latestWeight();
+  const p = data.petInfo;
+
+  return `
+  <h1 style="font-size:20px;margin:6px 0 4px">🩺 看診摘要</h1>
+  <div class="muted" style="margin-bottom:12px">${esc(p.name)}｜${esc(p.breed)}｜${ageString(p.birthDate)}｜生日 ${fmtDate(p.birthDate)}${w ? `｜目前體重 ${w.kg} kg` : ''}<br>產生於 ${fmtDT(nowISO())}</div>
+
+  <div class="card vet-sec">
+    <h3>基本狀態</h3>
+    <div class="vet-line"><div class="d">主食乾糧</div><div>${data.mainFood.brand ? esc(`${data.mainFood.brand} ${data.mainFood.flavor}`) + `（每日 ${data.mainFood.mealsPerDay} 餐，自動餵食器）` : '未設定'}</div></div>
+    <div class="vet-line"><div class="d">驅蟲藥</div><div>${deworm ? `最後施用 ${fmtDate(deworm.timestamp)}（${daysSince(deworm.timestamp)} 天前）` : '無紀錄'}</div></div>
+  </div>
+
+  <div class="card vet-sec">
+    <h3>最近 30 天症狀時間軸（${syms.length} 筆）</h3>
+    ${syms.length ? syms.map(s => {
+      const extra = s.type === 'vomit' && s.vomitContent ? `（${VOMIT_CONTENTS[s.vomitContent] || s.vomitContent}）` : '';
+      return `<div class="vet-line"><div class="d">${fmtDT(s.timestamp)}</div>
+        <div>${esc((SYMPTOM_TYPES[s.type] || s.type) + extra)}
+        <span class="sev ${s.severity}">${SEVERITIES[s.severity] || ''}</span>
+        ${s.notes ? `<span class="muted"> ${esc(s.notes)}</span>` : ''}</div></div>`;
+    }).join('') : '<div class="muted">最近 30 天無症狀紀錄 ✅</div>'}
+  </div>
+
+  <div class="card vet-sec">
+    <h3>體重曲線</h3>
+    ${alive(data.weights).length >= 2 ? '<div class="chart-box"><canvas id="vetWeightChart"></canvas></div>'
+      : `<div class="muted">${w ? `目前 ${w.kg} kg（${fmtDate(w.date)}）` : '無體重紀錄'}</div>`}
+  </div>
+
+  <div class="card vet-sec">
+    <h3>最近 30 天飲食（罐頭／零食，${feeds.length} 筆）</h3>
+    ${feeds.length ? feeds.map(f => {
+      const prod = productById(f.productId);
+      const cat = prod && prod.category === 'treat' ? '零食' : '罐頭';
+      const proteins = prod && prod.proteins && prod.proteins.length ? `｜${prod.proteins.join('/')}` : '';
+      return `<div class="vet-line"><div class="d">${fmtDT(f.timestamp)}</div>
+        <div>[${cat}] ${esc(productLabel(prod))}${esc(proteins)}${f.rating ? '｜' + RATINGS[f.rating] : ''}</div></div>`;
+    }).join('') : '<div class="muted">無紀錄</div>'}
+  </div>
+
+  <div class="card vet-sec">
+    <h3>上次就診</h3>
+    ${lastMed ? `
+      <div class="vet-line"><div class="d">${fmtDate(lastMed.date)}</div><div>${esc(lastMed.reason || '')}｜${esc(lastMed.clinic || '')}</div></div>
+      ${lastMed.diagnosis ? `<div class="vet-line"><div class="d">診斷</div><div>${esc(lastMed.diagnosis)}</div></div>` : ''}
+      ${lastMed.treatment ? `<div class="vet-line"><div class="d">處置用藥</div><div>${esc(lastMed.treatment)}</div></div>` : ''}
+      ${Object.keys(lastMed.labValues || {}).length ? `<div class="vet-line"><div class="d">檢驗</div><div>${Object.entries(lastMed.labValues).map(([k,v]) => `${esc(k)}: ${esc(v)}`).join('、')}</div></div>` : ''}
+      ${lastMed.nextDue ? `<div class="vet-line"><div class="d">下次回診</div><div>${fmtDate(lastMed.nextDue)}</div></div>` : ''}
+    ` : '<div class="muted">無就診紀錄</div>'}
+  </div>
+
+  <div id="labChartsHolder"></div>
+
+  <button class="btn sec no-print" onclick="window.print()">🖨️ 列印／存成 PDF</button>`;
+}
+
+// ============================ 相簿（第一版佔位） ============================
+function viewAlbum(){
+  return `
+  <h1 style="font-size:20px;margin:6px 0 12px">📷 Cody 相簿</h1>
+  <div class="card empty" style="padding:48px 20px">
+    <div style="font-size:44px">🐱📸</div>
+    <div style="font-weight:700;margin:10px 0 6px;color:var(--ink)">相簿功能即將登場</div>
+    照片會存放在共用 Google Drive 資料夾的 photos/ 中，<br>第二版就能在這裡瀏覽 Cody 的照片牆！
+  </div>`;
+}
+
+// ============================ 設定 ============================
+function viewSettings(){
+  const p = data.petInfo;
+  const mf = data.mainFood;
+  const defs = alive(data.careTasks.definitions);
+  return `
+  <h1 style="font-size:20px;margin:6px 0 12px">⚙️ 設定</h1>
+
+  <div class="card set-block">
+    <h3 style="font-size:15px">👤 記錄者</h3>
+    <div class="muted">目前這台裝置的記錄者身分</div>
+    <div class="chips" style="margin-top:8px">
+      ${USERS.map(u => `<button class="chip big ${me()===u?'on':''}" onclick="setUser('${u}')">${u}</button>`).join('')}
+    </div>
+  </div>
+
+  <div class="card set-block">
+    <h3 style="font-size:15px">🐱 寵物資料</h3>
+    <label class="f">大頭照</label>
+    <input type="file" accept="image/*" id="petPhotoInput" onchange="handlePetPhoto(this)">
+    <label class="f">名字</label>
+    <input id="petName" value="${esc(p.name)}">
+    <label class="f">生日</label>
+    <input id="petBirth" type="date" value="${esc(p.birthDate)}">
+    <label class="f">品種</label>
+    <input id="petBreed" value="${esc(p.breed)}">
+    <button class="btn small" onclick="savePetInfo()">儲存寵物資料</button>
+  </div>
+
+  <div class="card set-block">
+    <h3 style="font-size:15px">🍚 主食乾糧</h3>
+    <div class="muted">換品牌／口味時在這裡更新，系統會自動記下換糧事件</div>
+    <label class="f">品牌</label>
+    <input id="mfBrand" value="${esc(mf.brand)}">
+    <label class="f">口味</label>
+    <input id="mfFlavor" value="${esc(mf.flavor)}">
+    <label class="f">每日餐數（自動餵食器）</label>
+    <input id="mfMeals" type="number" min="1" max="12" value="${mf.mealsPerDay}">
+    <button class="btn small" onclick="saveMainFood()">儲存主食設定</button>
+    ${(mf.history || []).length ? `<details><summary>換糧歷史（${mf.history.length}）</summary>
+      ${mf.history.slice().reverse().map(h => `<div class="muted" style="padding:4px 0">${fmtDate(h.changedAt)}｜${esc(h.brand)} ${esc(h.flavor)}</div>`).join('')}
+    </details>` : ''}
+  </div>
+
+  <div class="card set-block">
+    <h3 style="font-size:15px">🧼 照護項目與週期</h3>
+    ${defs.map(d => `
+      <div class="care-def-row">
+        <input value="${esc(d.name)}" onchange="updateCareDef('${d.id}','name',this.value)">
+        <input type="number" min="1" value="${d.cycleDays}" onchange="updateCareDef('${d.id}','cycleDays',this.value)" title="週期天數">
+        <button onclick="deleteCareDef('${d.id}')">🗑️</button>
+      </div>`).join('')}
+    <div class="muted" style="margin-top:6px">中間欄位為提醒週期（天）</div>
+    <button class="btn small sec" onclick="addCareDef()">＋ 新增照護項目</button>
+  </div>
+
+  <div class="card set-block">
+    <h3 style="font-size:15px">☁️ Google Drive 雙人同步</h3>
+    <div class="muted">Jerry 與 Phoebe 各自用自己的 Google 帳號登入，共同讀寫共用資料夾裡的 ${DATA_FILENAME}</div>
+    <label class="f">OAuth Client ID</label>
+    <input id="gClientId" placeholder="xxxxx.apps.googleusercontent.com" value="${esc(device.clientId || '')}">
+    <label class="f">共用資料夾 ID</label>
+    <input id="gFolderId" placeholder="Drive 資料夾網址 /folders/ 後面那串" value="${esc(device.folderId || '')}">
+    <button class="btn small" onclick="saveDriveSettings()">儲存同步設定</button>
+    <button class="btn small sec" onclick="connectAndSync()">🔄 登入並同步</button>
+    <div class="sync-status" id="syncStatus">${syncStatusText()}</div>
+    <details>
+      <summary>首次設定說明</summary>
+      <div class="muted" style="margin-top:6px">
+        1. 到 <b>Google Cloud Console</b> 建立專案，啟用 <b>Google Drive API</b>。<br>
+        2. 建立 <b>OAuth 用戶端 ID</b>（網頁應用程式），「已授權的 JavaScript 來源」加入本站網址（如 https://jerry-6969.github.io）。<br>
+        3. OAuth 同意畫面維持「測試中」，把 Jerry 和 Phoebe 的 Gmail 加入測試使用者。<br>
+        4. Jerry 在 Drive 建一個資料夾並分享給 Phoebe（編輯權限），把資料夾網址 /folders/ 後面的 ID 貼到上面。<br>
+        5. 兩人各自在自己手機上填入相同的 Client ID 與資料夾 ID，按「登入並同步」。
+      </div>
+    </details>
+  </div>
+
+  <div class="card set-block">
+    <h3 style="font-size:15px">💾 備份</h3>
+    <button class="btn small sec" onclick="exportJSON()">⬇️ 匯出 JSON 備份</button>
+    <button class="btn small sec" onclick="document.getElementById('importFile').click()">⬆️ 匯入 JSON（合併）</button>
+    <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="importJSON(this)">
+    <button class="btn small danger" onclick="resetAll()">清除本機所有資料</button>
+  </div>
+
+  <div class="muted" style="text-align:center;margin-top:18px">Codyapp v1.0 · 為 Cody 而做 🐾</div>`;
+}
+
+function setUser(u){ device.user = u; saveDevice(); render(); toast(`記錄者：${u}`); }
+
+function savePetInfo(){
+  data.petInfo.name = $('#petName').value.trim() || 'Cody';
+  data.petInfo.birthDate = $('#petBirth').value || '2024-02-26';
+  data.petInfo.breed = $('#petBreed').value.trim();
+  data.petInfo.updatedAt = nowISO();
+  saveData();
+  toast('已儲存寵物資料');
+}
+function openPetPhoto(){
+  if(currentView !== 'settings'){ currentView = 'settings'; render(); }
+  setTimeout(() => { const el = $('#petPhotoInput'); if(el) el.click(); }, 50);
+}
+function handlePetPhoto(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const img = new Image();
+  img.onload = () => {
+    const size = 300;
+    const canvas = document.createElement('canvas');
+    const scale = Math.max(size / img.width, size / img.height);
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const w = img.width * scale, h = img.height * scale;
+    ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+    data.petInfo.photoUrl = canvas.toDataURL('image/jpeg', 0.85);
+    data.petInfo.updatedAt = nowISO();
+    saveData();
+    toast('大頭照已更新');
+    URL.revokeObjectURL(img.src);
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+function saveMainFood(){
+  const brand = $('#mfBrand').value.trim();
+  const flavor = $('#mfFlavor').value.trim();
+  const meals = parseInt($('#mfMeals').value, 10) || 6;
+  const changed = brand !== data.mainFood.brand || flavor !== data.mainFood.flavor;
+  data.mainFood.brand = brand;
+  data.mainFood.flavor = flavor;
+  data.mainFood.mealsPerDay = meals;
+  data.mainFood.updatedAt = nowISO();
+  if(changed && (brand || flavor)){
+    data.mainFood.history = data.mainFood.history || [];
+    data.mainFood.history.push({ id: uid(), brand, flavor, changedAt: nowISO() });
+  }
+  saveData();
+  toast(changed ? '已更新主食（已記錄換糧事件）' : '已儲存主食設定');
+}
+
+function updateCareDef(id, key, val){
+  const d = (data.careTasks.definitions || []).find(x => x.id === id);
+  if(!d) return;
+  if(key === 'cycleDays') d.cycleDays = Math.max(1, parseInt(val, 10) || 1);
+  else d.name = val.trim() || d.name;
+  d.updatedAt = nowISO();
+  saveData({ rerender:false });
+}
+function addCareDef(){
+  const name = prompt('新照護項目名稱（如：梳毛、剃毛）');
+  if(!name) return;
+  const cycle = parseInt(prompt('提醒週期（天）', '7'), 10) || 7;
+  data.careTasks.definitions.push({ id: uid(), name: name.trim(), cycleDays: cycle, updatedAt: nowISO() });
+  saveData();
+  toast('已新增照護項目');
+}
+function deleteCareDef(id){
+  const d = (data.careTasks.definitions || []).find(x => x.id === id);
+  if(!d) return;
+  if(!confirm(`確定刪除照護項目「${d.name}」？（歷史紀錄仍會保留）`)) return;
+  d.deleted = true;
+  d.updatedAt = nowISO();
+  saveData();
+}
+
+// ---------------------------------------------------------------- export / import
+function exportJSON(){
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  const d = new Date(), p = n => String(n).padStart(2,'0');
+  a.href = URL.createObjectURL(blob);
+  a.download = `cody-data-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('已匯出備份');
+}
+function importJSON(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const incoming = JSON.parse(reader.result);
+      data = mergeData(data, incoming);
+      saveData();
+      toast('已匯入並合併資料');
+    }catch(e){
+      alert('匯入失敗：檔案不是有效的 JSON');
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+function resetAll(){
+  if(!confirm('確定要清除這台裝置上的所有資料嗎？（Drive 上的資料不受影響）')) return;
+  localStorage.removeItem(LS_KEY);
+  data = defaultData();
+  saveData({ sync:false });
+  toast('已清除本機資料');
+}
+
+// ============================ Modal 系統 ============================
+function openModal(html){
+  $('#modalBox').innerHTML = html;
+  $('#modalBack').classList.add('show');
+}
+function closeModal(){
+  $('#modalBack').classList.remove('show');
+  $('#modalBox').innerHTML = '';
+}
+$('#modalBack') && document.addEventListener('click', e => {
+  if(e.target === $('#modalBack')) closeModal();
+});
+function modalHead(title){
+  return `<h3>${title}<button class="x" onclick="closeModal()">✕</button></h3>`;
+}
+function chipGroupHtml(name, options, selected, multi = false){
+  return `<div class="chips" data-chips="${name}" data-multi="${multi ? 1 : 0}">
+    ${Object.entries(options).map(([k,l]) =>
+      `<button type="button" class="chip ${ (multi ? (selected||[]).includes(k) : selected === k) ? 'on' : ''}"
+        data-val="${k}" onclick="toggleChip(this)">${l}</button>`).join('')}
+  </div>`;
+}
+function toggleChip(btn){
+  const group = btn.closest('[data-chips]');
+  const multi = group.dataset.multi === '1';
+  if(multi){
+    btn.classList.toggle('on');
+  }else{
+    group.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+    btn.classList.add('on');
+  }
+  if(group.dataset.chips === 'symType'){
+    const vomitBox = $('#vomitContentBox');
+    if(vomitBox) vomitBox.style.display = chipValue('symType') === 'vomit' ? 'block' : 'none';
+  }
+}
+function chipValue(name){
+  const group = document.querySelector(`[data-chips="${name}"]`);
+  if(!group) return null;
+  if(group.dataset.multi === '1')
+    return [...group.querySelectorAll('.chip.on')].map(c => c.dataset.val);
+  const on = group.querySelector('.chip.on');
+  return on ? on.dataset.val : null;
+}
+
+// ============================ 罐頭／零食 ============================
+let feedingCategory = 'can';
+function openFeedingModal(category){
+  feedingCategory = category;
+  const label = category === 'can' ? '🥫 記錄罐頭' : '🍖 記錄零食';
+  const lib = alive(data.productLibrary).filter(p => p.category === category);
+  openModal(`
+    ${modalHead(label)}
+    <label class="f">選擇產品</label>
+    ${lib.length ? `<div class="lib-grid" data-chips="feedProduct" data-multi="0">
+      ${lib.map(p => `<button type="button" class="chip" data-val="${p.id}" onclick="toggleChip(this)">${esc(productLabel(p))}</button>`).join('')}
+    </div>` : '<div class="muted">產品庫還是空的，先新增第一個產品吧</div>'}
+    <button class="btn small sec" type="button" onclick="toggleNewProduct()">＋ 新增產品</button>
+    <div id="newProductBox" style="display:${lib.length ? 'none' : 'block'}">
+      <div class="row2">
+        <div><label class="f">品牌</label><input id="npBrand"></div>
+        <div><label class="f">口味</label><input id="npFlavor"></div>
+      </div>
+      <label class="f">主要蛋白質（可複選）</label>
+      ${chipGroupHtml('npProteins', Object.fromEntries(PROTEINS.map(p => [p,p])), [], true)}
+      <label class="f">成分備註</label>
+      <input id="npIngredients" placeholder="例：無穀、含南瓜">
+    </div>
+    <label class="f">日期時間</label>
+    <input type="datetime-local" id="feedTime" value="${localInputNow()}">
+    <label class="f">賞臉評分</label>
+    ${chipGroupHtml('feedRating', RATINGS, 'ate_all')}
+    ${category === 'can' ? `
+    <label class="f" style="display:flex;align-items:center;gap:8px;font-size:15px;color:var(--ink)">
+      <input type="checkbox" id="feedReplace" style="width:20px;height:20px"> 取代最後一餐（關掉餵食器）
+    </label>` : ''}
+    <label class="f">備註</label>
+    <input id="feedNotes" placeholder="選填">
+    <button class="btn" onclick="saveFeeding()">儲存${category === 'can' ? '罐頭' : '零食'}紀錄</button>
+  `);
+}
+function toggleNewProduct(){
+  const box = $('#newProductBox');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+function saveFeeding(){
+  let productId = chipValue('feedProduct');
+  const npBrand = $('#npBrand') ? $('#npBrand').value.trim() : '';
+  const npFlavor = $('#npFlavor') ? $('#npFlavor').value.trim() : '';
+  const newBoxVisible = $('#newProductBox') && $('#newProductBox').style.display !== 'none';
+
+  if(newBoxVisible && (npBrand || npFlavor)){
+    const prod = {
+      id: uid(), category: feedingCategory, brand: npBrand, flavor: npFlavor,
+      proteins: chipValue('npProteins') || [], ingredients: $('#npIngredients').value.trim(),
+      updatedAt: nowISO()
+    };
+    data.productLibrary.push(prod);
+    productId = prod.id;
+  }
+  if(!productId){ alert('請選擇產品或新增產品'); return; }
+
+  const timeVal = $('#feedTime').value;
+  data.feedings.push({
+    id: uid(),
+    timestamp: timeVal ? new Date(timeVal).toISOString() : nowISO(),
+    productId,
+    rating: chipValue('feedRating') || '',
+    replacedLastMeal: !!($('#feedReplace') && $('#feedReplace').checked),
+    notes: $('#feedNotes').value.trim(),
+    recordedBy: me(),
+    updatedAt: nowISO()
+  });
+  saveData();
+  closeModal();
+  toast('已記錄 🎉');
+}
+
+// ============================ 症狀 ============================
+function openSymptomModal(){
+  openModal(`
+    ${modalHead('🤒 記錄症狀')}
+    <label class="f">症狀類型</label>
+    ${chipGroupHtml('symType', SYMPTOM_TYPES, null)}
+    <div id="vomitContentBox" style="display:none">
+      <label class="f">嘔吐內容物</label>
+      ${chipGroupHtml('vomitContent', VOMIT_CONTENTS, null)}
+    </div>
+    <label class="f">嚴重程度</label>
+    ${chipGroupHtml('symSeverity', SEVERITIES, 'mild')}
+    <label class="f">日期時間</label>
+    <input type="datetime-local" id="symTime" value="${localInputNow()}">
+    <label class="f">備註</label>
+    <input id="symNotes" placeholder="選填">
+    <button class="btn" onclick="saveSymptom()">儲存症狀紀錄</button>
+  `);
+}
+function saveSymptom(){
+  const type = chipValue('symType');
+  if(!type){ alert('請選擇症狀類型'); return; }
+  const timeVal = $('#symTime').value;
+  data.symptoms.push({
+    id: uid(),
+    timestamp: timeVal ? new Date(timeVal).toISOString() : nowISO(),
+    type,
+    vomitContent: type === 'vomit' ? (chipValue('vomitContent') || '') : '',
+    severity: chipValue('symSeverity') || 'mild',
+    notes: $('#symNotes').value.trim(),
+    recordedBy: me(),
+    updatedAt: nowISO()
+  });
+  saveData();
+  closeModal();
+  toast('已記錄症狀');
+}
+
+// ============================ 照護 ============================
+function openCareModal(preselectId){
+  const defs = alive(data.careTasks.definitions);
+  const opts = Object.fromEntries(defs.map(d => [d.id, d.name]));
+  openModal(`
+    ${modalHead('🧼 記錄照護')}
+    <label class="f">照護項目</label>
+    ${chipGroupHtml('careTask', opts, preselectId || null)}
+    <label class="f">日期時間</label>
+    <input type="datetime-local" id="careTime" value="${localInputNow()}">
+    <label class="f">備註</label>
+    <input id="careNotes" placeholder="選填">
+    <button class="btn" onclick="saveCareLog()">完成 ✓ 計時重新開始</button>
+  `);
+}
+function saveCareLog(){
+  const taskId = chipValue('careTask');
+  if(!taskId){ alert('請選擇照護項目'); return; }
+  const timeVal = $('#careTime').value;
+  data.careTasks.logs.push({
+    id: uid(),
+    taskId,
+    timestamp: timeVal ? new Date(timeVal).toISOString() : nowISO(),
+    notes: $('#careNotes').value.trim(),
+    recordedBy: me(),
+    updatedAt: nowISO()
+  });
+  saveData();
+  closeModal();
+  const def = data.careTasks.definitions.find(d => d.id === taskId);
+  toast(`${def ? def.name : '照護'} 完成 ✓`);
+}
+
+// ============================ 體重 ============================
+function openWeightModal(){
+  const w = latestWeight();
+  openModal(`
+    ${modalHead('⚖️ 記錄體重')}
+    <label class="f">體重（kg）</label>
+    <input type="number" id="wtKg" step="0.1" min="0" inputmode="decimal" placeholder="${w ? `上次 ${w.kg}` : '例：4.5'}">
+    <label class="f">日期</label>
+    <input type="date" id="wtDate" value="${todayInput()}">
+    <button class="btn" onclick="saveWeight()">儲存體重</button>
+  `);
+}
+function saveWeight(){
+  const kg = parseFloat($('#wtKg').value);
+  if(!kg || kg <= 0){ alert('請輸入體重'); return; }
+  data.weights.push({
+    id: uid(),
+    date: $('#wtDate').value || todayInput(),
+    kg: Math.round(kg * 10) / 10,
+    recordedBy: me(),
+    updatedAt: nowISO()
+  });
+  saveData();
+  closeModal();
+  toast('已記錄體重');
+}
+
+// ============================ 醫療 ============================
+function openMedicalModal(){
+  openModal(`
+    ${modalHead('🏥 記錄就診')}
+    <label class="f">就診日期</label>
+    <input type="date" id="medDate" value="${todayInput()}">
+    <label class="f">就診原因</label>
+    <input id="medReason" placeholder="例：年度健檢、嘔吐">
+    <label class="f">醫院／醫師</label>
+    <input id="medClinic" placeholder="例：小動物醫院 王醫師">
+    <label class="f">診斷</label>
+    <input id="medDiagnosis">
+    <label class="f">處置／用藥</label>
+    <textarea id="medTreatment" rows="2"></textarea>
+    <label class="f">檢驗指數（如 BUN、CREA、ALT）</label>
+    <div id="labRows"></div>
+    <button class="btn small sec" type="button" onclick="addLabRow()">＋ 新增指數</button>
+    <div class="row2">
+      <div><label class="f">費用（選填）</label><input type="number" id="medCost" inputmode="numeric"></div>
+      <div><label class="f">下次回診／疫苗</label><input type="date" id="medNextDue"></div>
+    </div>
+    <label class="f">照片連結（檢驗報告，每行一個網址）</label>
+    <textarea id="medPhotos" rows="2" placeholder="選填，可貼 Drive 照片連結"></textarea>
+    <button class="btn" onclick="saveMedical()">儲存就診紀錄</button>
+  `);
+  addLabRow();
+}
+function addLabRow(){
+  const row = document.createElement('div');
+  row.className = 'kv-row';
+  row.innerHTML = `<input placeholder="指數名 (BUN)" class="lab-k">
+                   <input placeholder="數值" type="number" step="any" inputmode="decimal" class="lab-v">
+                   <button type="button" onclick="this.parentElement.remove()">✕</button>`;
+  $('#labRows').appendChild(row);
+}
+function saveMedical(){
+  const labValues = {};
+  document.querySelectorAll('#labRows .kv-row').forEach(r => {
+    const k = r.querySelector('.lab-k').value.trim();
+    const v = r.querySelector('.lab-v').value;
+    if(k && v !== '') labValues[k] = parseFloat(v);
+  });
+  const cost = $('#medCost').value;
+  data.medical.push({
+    id: uid(),
+    date: $('#medDate').value || todayInput(),
+    reason: $('#medReason').value.trim(),
+    clinic: $('#medClinic').value.trim(),
+    diagnosis: $('#medDiagnosis').value.trim(),
+    treatment: $('#medTreatment').value.trim(),
+    labValues,
+    cost: cost === '' ? null : parseFloat(cost),
+    nextDue: $('#medNextDue').value || '',
+    photoUrls: $('#medPhotos').value.split('\n').map(s => s.trim()).filter(Boolean),
+    recordedBy: me(),
+    updatedAt: nowISO()
+  });
+  saveData();
+  closeModal();
+  toast('已記錄就診');
+}
+
+// ============================ Charts ============================
+function afterRender(){
+  if(typeof Chart === 'undefined') return;   // 離線且 CDN 未載入時，略過圖表、其餘功能照常
+  const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#e08a4c';
+  const baseOpts = {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ display:false } },
+    scales:{ y:{ grid:{ color:'#f0eae1' } }, x:{ grid:{ display:false } } }
+  };
+  const weights = alive(data.weights).sort((a,b) => (a.date < b.date ? -1 : 1));
+  for(const cid of ['weightChart','vetWeightChart']){
+    const el = document.getElementById(cid);
+    if(el && weights.length >= 2){
+      charts.push(new Chart(el, {
+        type:'line',
+        data:{
+          labels: weights.map(w => fmtShortDate(w.date)),
+          datasets:[{ data: weights.map(w => w.kg), borderColor: brand,
+            backgroundColor:'rgba(224,138,76,.12)', fill:true, tension:.3,
+            pointRadius:4, pointBackgroundColor: brand }]
+        },
+        options:{ ...baseOpts,
+          scales:{ ...baseOpts.scales,
+            y:{ ...baseOpts.scales.y, title:{ display:true, text:'kg' } } } }
+      }));
+    }
+  }
+  // 檢驗指數趨勢圖（醫療紀錄頁籤：放在紀錄列表最上方 → 改放在看診模式? 規格：同一指數跨次就診自動畫趨勢）
+  renderLabCharts();
+}
+
+function labSeries(){
+  const meds = alive(data.medical).sort((a,b) => (a.date < b.date ? -1 : 1));
+  const series = {};
+  for(const m of meds){
+    for(const [k,v] of Object.entries(m.labValues || {})){
+      if(typeof v !== 'number' || isNaN(v)) continue;
+      (series[k] = series[k] || []).push({ date:m.date, value:v });
+    }
+  }
+  return series;
+}
+function renderLabCharts(){
+  const holder = document.getElementById('labChartsHolder');
+  if(!holder) return;
+  const series = labSeries();
+  const keys = Object.keys(series).filter(k => series[k].length >= 2);
+  if(!keys.length){ holder.innerHTML = ''; return; }
+  holder.innerHTML = `<h2>🧪 檢驗指數趨勢</h2>` + keys.map((k,i) =>
+    `<div class="card" style="margin-bottom:10px"><b style="font-size:14px">${esc(k)}</b>
+     <div class="lab-chart"><canvas id="labChart_${i}"></canvas></div></div>`).join('');
+  keys.forEach((k,i) => {
+    const el = document.getElementById(`labChart_${i}`);
+    charts.push(new Chart(el, {
+      type:'line',
+      data:{
+        labels: series[k].map(p => fmtShortDate(p.date)),
+        datasets:[{ data: series[k].map(p => p.value), borderColor:'#3a62ad',
+          backgroundColor:'rgba(58,98,173,.1)', fill:true, tension:.25,
+          pointRadius:4, pointBackgroundColor:'#3a62ad' }]
+      },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false } },
+        scales:{ y:{ grid:{ color:'#f0eae1' } }, x:{ grid:{ display:false } } } }
+    }));
+  });
+}
+
+// ============================ Google Drive 同步 ============================
+let accessToken = null;
+let tokenExpiry = 0;
+let syncTimer = null;
+let syncing = false;
+
+function syncStatusText(){
+  if(syncing) return '同步中…';
+  if(!device.clientId || !device.folderId) return '尚未設定（填入 Client ID 與資料夾 ID）';
+  if(accessToken && Date.now() < tokenExpiry) return `✅ 已連接${data.metadata.lastSync ? `｜上次同步 ${fmtDT(data.metadata.lastSync)}` : ''}`;
+  return data.metadata.lastSync ? `未登入｜上次同步 ${fmtDT(data.metadata.lastSync)}` : '未登入';
+}
+function setSyncStatus(text, cls){
+  const el = document.getElementById('syncStatus');
+  if(el){ el.textContent = text; el.className = 'sync-status ' + (cls || ''); }
+}
+function saveDriveSettings(){
+  device.clientId = $('#gClientId').value.trim();
+  device.folderId = $('#gFolderId').value.trim();
+  saveDevice();
+  toast('已儲存同步設定');
+  setSyncStatus(syncStatusText());
+}
+function getAccessToken(){
+  return new Promise((resolve, reject) => {
+    if(accessToken && Date.now() < tokenExpiry - 60000) return resolve(accessToken);
+    if(!window.google || !google.accounts || !google.accounts.oauth2)
+      return reject(new Error('Google 登入元件尚未載入，請檢查網路後重試'));
+    if(!device.clientId) return reject(new Error('尚未設定 OAuth Client ID'));
+    const tc = google.accounts.oauth2.initTokenClient({
+      client_id: device.clientId,
+      scope: 'https://www.googleapis.com/auth/drive',
+      callback: resp => {
+        if(resp && resp.access_token){
+          accessToken = resp.access_token;
+          tokenExpiry = Date.now() + (parseInt(resp.expires_in, 10) || 3600) * 1000;
+          resolve(accessToken);
+        }else{
+          reject(new Error('取得授權失敗'));
+        }
+      },
+      error_callback: err => reject(new Error(err && err.message ? err.message : '登入視窗被關閉或發生錯誤'))
+    });
+    tc.requestAccessToken({ prompt: '' });
+  });
+}
+async function driveFetch(url, opts = {}){
+  const token = await getAccessToken();
+  const resp = await fetch(url, {
+    ...opts,
+    headers: { ...(opts.headers || {}), 'Authorization': `Bearer ${token}` }
+  });
+  if(resp.status === 401){
+    accessToken = null;
+    throw new Error('授權過期，請再按一次「登入並同步」');
+  }
+  if(!resp.ok){
+    const body = await resp.text();
+    throw new Error(`Drive API 錯誤 ${resp.status}：${body.slice(0, 200)}`);
+  }
+  return resp;
+}
+async function driveFindFile(){
+  const q = encodeURIComponent(`'${device.folderId}' in parents and name='${DATA_FILENAME}' and trashed=false`);
+  const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&supportsAllDrives=true&includeItemsFromAllDrives=true`);
+  const json = await resp.json();
+  return (json.files && json.files[0]) || null;
+}
+async function driveDownload(fileId){
+  const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`);
+  return resp.json();
+}
+async function driveCreate(content){
+  const boundary = 'codyapp' + Date.now();
+  const meta = { name: DATA_FILENAME, parents: [device.folderId], mimeType: 'application/json' };
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n` +
+    `--${boundary}\r\nContent-Type: application/json\r\n\r\n${content}\r\n--${boundary}--`;
+  await driveFetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body
+  });
+}
+async function driveUpdate(fileId, content){
+  await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: content
+  });
+}
+async function syncNow(){
+  if(syncing) return;
+  if(!device.clientId || !device.folderId){
+    setSyncStatus('請先填入 Client ID 與共用資料夾 ID', 'err');
+    return;
+  }
+  syncing = true;
+  setSyncStatus('同步中…');
+  try{
+    const file = await driveFindFile();
+    if(file){
+      const remote = await driveDownload(file.id);
+      data = mergeData(data, remote);
+      data.metadata.lastSync = nowISO();
+      await driveUpdate(file.id, JSON.stringify(data, null, 2));
+    }else{
+      data.metadata.lastSync = nowISO();
+      await driveCreate(JSON.stringify(data, null, 2));
+    }
+    localStorage.setItem(LS_KEY, JSON.stringify(data));
+    syncing = false;
+    render();
+    setSyncStatus(`✅ 同步完成 ${fmtDT(data.metadata.lastSync)}`, 'ok');
+    toast('☁️ 已同步 Google Drive');
+  }catch(e){
+    syncing = false;
+    console.error(e);
+    setSyncStatus('❌ ' + e.message, 'err');
+  }
+}
+function connectAndSync(){
+  saveDriveSettings();
+  syncNow();
+}
+// 存檔後若已登入，延遲自動同步（離線或未登入則略過，不影響本機記錄）
+function scheduleSync(){
+  if(!accessToken || Date.now() >= tokenExpiry) return;
+  if(!navigator.onLine) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => syncNow(), 4000);
+}
+window.addEventListener('online', () => scheduleSync());
+
+// ============================ init ============================
+document.querySelectorAll('#tabs button').forEach(b => {
+  b.addEventListener('click', () => { currentView = b.dataset.v; render(); });
+});
+render();
+
+// 首次使用：選擇記錄者
+if(!device.user){
+  openModal(`
+    ${modalHead('👋 歡迎使用 Codyapp')}
+    <div class="muted">請選擇這台裝置的記錄者，之後每筆紀錄都會標記是誰記的（可在設定頁更改）。</div>
+    <div class="chips" style="margin-top:14px">
+      ${USERS.map(u => `<button class="chip big" style="flex:1;text-align:center" onclick="setUser('${u}');closeModal()">${u}</button>`).join('')}
+    </div>
+  `);
+}
+</script>
+</body>
+</html>
