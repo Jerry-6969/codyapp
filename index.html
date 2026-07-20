@@ -153,6 +153,32 @@
          opacity:0;transition:opacity .25s;pointer-events:none;}
   .toast.show{opacity:.95;}
   .lib-grid{display:flex;flex-wrap:wrap;gap:8px;max-height:180px;overflow-y:auto;}
+
+  /* ---------- 今日檢查 ---------- */
+  .dc-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .dc-item{display:flex;flex-direction:column;gap:4px;}
+  .dc-check{border-radius:12px;border:2px solid var(--line);background:#fff;padding:10px 4px;
+            display:flex;flex-direction:column;align-items:center;gap:2px;
+            font-size:13px;font-weight:700;color:var(--ink2);}
+  .dc-check .em{font-size:24px;}
+  .dc-check.on{background:var(--green-soft);border-color:#8fd4ae;color:#2c7d55;}
+  .dc-warn{background:none;color:var(--red);font-size:12px;font-weight:700;padding:3px;}
+
+  /* ---------- 產品看圖快選 ---------- */
+  .prod-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:280px;overflow-y:auto;}
+  .prod-card{border:2px solid var(--line);border-radius:12px;background:#fff;padding:6px;
+             display:flex;flex-direction:column;align-items:center;gap:4px;
+             font-size:12px;font-weight:600;color:var(--ink);}
+  .prod-card img,.prod-noimg{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;}
+  .prod-noimg{display:flex;align-items:center;justify-content:center;font-size:30px;background:var(--bg);}
+  .prod-card.on{border-color:var(--brand);background:var(--brand-soft);}
+  .prod-card span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
+  .mini-thumb{width:26px;height:26px;border-radius:6px;object-fit:cover;vertical-align:-8px;margin-right:6px;}
+
+  /* ---------- 相簿 ---------- */
+  .album-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .album-thumb{aspect-ratio:1;border-radius:10px;overflow:hidden;background:#eee6da;border:none;padding:0;font-size:26px;}
+  .album-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
   .kv-row{display:grid;grid-template-columns:1fr 1fr 34px;gap:8px;margin-top:8px;align-items:center;}
   .kv-row button{background:none;color:var(--red);font-size:18px;}
   .care-def-row{display:grid;grid-template-columns:1fr 84px 34px;gap:8px;margin-top:8px;align-items:center;}
@@ -203,8 +229,14 @@ const DEFAULT_CLIENT_ID = '900627207011-6t50bvo8p37lsbmldoggknumrhkvckfs.apps.go
 
 const RATINGS = { ate_all:'😻 吃光', half:'😐 剩一半', refused:'🙈 聞了就走' };
 const PROTEINS = ['雞','魚','牛','鴨','羊','混合'];
-const SYMPTOM_TYPES = { vomit:'嘔吐', soft_stool:'軟便', no_appetite:'拒食', itchy:'皮膚搔癢', other:'其他' };
+const SYMPTOM_TYPES = { vomit:'嘔吐', soft_stool:'軟便', diarrhea:'拉肚子', no_appetite:'拒食', urine:'排尿異常', itchy:'皮膚搔癢', other:'其他' };
 const VOMIT_CONTENTS = { hairball:'毛球', undigested:'未消化食物', yellow:'黃水', foam:'白沫', other:'其他' };
+const URINE_CONTENTS = { frequent:'頻尿', little:'尿量少', blood:'血尿', outside:'亂尿在外', other:'其他' };
+const DAILY_ITEMS = [
+  { key:'food', emoji:'🍚', label:'飼料吃光', warnType:'no_appetite' },
+  { key:'pee',  emoji:'💧', label:'有尿尿',   warnType:'urine' },
+  { key:'poop', emoji:'💩', label:'有大便',   warnType:'diarrhea' }
+];
 const SEVERITIES = { mild:'輕', mid:'中', severe:'重' };
 const USERS = ['Jerry','Phoebe'];
 
@@ -279,7 +311,8 @@ function defaultData(){
       logs: []
     },
     medical: [],
-    weights: []
+    weights: [],
+    dailyChecks: []
   };
 }
 
@@ -356,13 +389,33 @@ function mergeData(base, incoming){
   };
   out.medical = mergeById(a.medical, b.medical);
   out.weights = mergeById(a.weights, b.weights);
+  out.dailyChecks = mergeDailyChecks(a.dailyChecks, b.dailyChecks);
   return out;
+}
+// 每日檢查合併：同一天的勾選取「或」——兩人各勾各的不會互相蓋掉
+function mergeDailyChecks(a = [], b = []){
+  const m = new Map();
+  for(const c of [...(a||[]), ...(b||[])]){
+    if(!c || !c.id) continue;
+    const prev = m.get(c.id);
+    if(!prev){ m.set(c.id, {...c}); continue; }
+    const newer = (c.updatedAt||'') >= (prev.updatedAt||'') ? c : prev;
+    m.set(c.id, {...newer,
+      food: !!(prev.food || c.food),
+      pee:  !!(prev.pee  || c.pee),
+      poop: !!(prev.poop || c.poop)});
+  }
+  return [...m.values()];
 }
 
 // ---------------------------------------------------------------- helpers on data
 function me(){ return device.user || ''; }
 function productById(id){ return (data.productLibrary || []).find(p => p.id === id); }
-function productLabel(p){ return p ? `${p.brand} ${p.flavor}`.trim() : '（未知產品）'; }
+function productLabel(p){
+  if(!p) return '（未知產品）';
+  const t = `${p.brand || ''} ${p.flavor || ''}`.trim();
+  return t || (p.photo ? '📷 未命名產品' : '（未命名）');
+}
 function latestWeight(){
   const ws = alive(data.weights).sort((a,b) => (a.date < b.date ? -1 : 1));
   return ws.length ? ws[ws.length - 1] : null;
@@ -379,6 +432,39 @@ function careStatus(def){
   const ratio = days / def.cycleDays;
   const cls = ratio >= 1 ? 'due' : (ratio >= 0.66 ? 'warn' : 'ok');
   return { days, cls, txt:`已 ${days} 天` };
+}
+function symptomText(s){
+  let t = SYMPTOM_TYPES[s.type] || s.type;
+  if(s.type === 'vomit' && s.vomitContent) t += `（${VOMIT_CONTENTS[s.vomitContent] || s.vomitContent}）`;
+  if(s.type === 'urine' && s.urineContent) t += `（${URINE_CONTENTS[s.urineContent] || s.urineContent}）`;
+  return t;
+}
+function todayCheck(){
+  return (data.dailyChecks || []).find(c => c.date === todayInput());
+}
+function toggleDailyCheck(key){
+  const t = todayInput();
+  data.dailyChecks = data.dailyChecks || [];
+  let c = data.dailyChecks.find(x => x.date === t);
+  if(!c){
+    c = { id:'dc-' + t, date:t, food:false, pee:false, poop:false, recordedBy:me(), updatedAt:nowISO() };
+    data.dailyChecks.push(c);
+  }
+  c[key] = !c[key];
+  c.recordedBy = me();
+  c.updatedAt = nowISO();
+  saveData();
+}
+function dailyStreak(){
+  const m = new Map((data.dailyChecks || []).map(c => [c.date, c]));
+  const full = c => c && c.food && c.pee && c.poop;
+  const p = n => String(n).padStart(2,'0');
+  const key = d => `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+  let streak = 0;
+  const d = new Date();
+  if(!full(m.get(key(d)))) d.setDate(d.getDate() - 1);   // 今天還沒勾完就從昨天往回算
+  while(full(m.get(key(d)))){ streak++; d.setDate(d.getDate() - 1); }
+  return streak;
 }
 function nextMedicalDue(){
   const today = todayInput();
@@ -421,6 +507,23 @@ function viewHome(){
       <div class="sub">${esc(p.breed)}｜${ageString(p.birthDate)}</div>
       <div class="kg">${w ? `⚖️ ${w.kg} kg` : '尚未記錄體重'}</div>
     </div>
+  </div>
+
+  <h2>📅 今日檢查</h2>
+  <div class="card">
+    <div class="dc-row">
+      ${DAILY_ITEMS.map(it => {
+        const c = todayCheck();
+        const on = c && c[it.key];
+        return `<div class="dc-item">
+          <button class="dc-check ${on ? 'on' : ''}" onclick="toggleDailyCheck('${it.key}')">
+            <span class="em">${it.emoji}</span>${it.label}${on ? ' ✓' : ''}
+          </button>
+          <button class="dc-warn" onclick="openSymptomModal('${it.warnType}')">⚠️ 記異常</button>
+        </div>`;
+      }).join('')}
+    </div>
+    ${dailyStreak() > 0 ? `<div class="muted" style="text-align:center;margin-top:8px">✨ 已連續 ${dailyStreak()} 天全部正常</div>` : ''}
   </div>
 
   <h2>🧼 照護提醒</h2>
@@ -486,14 +589,13 @@ function recent7Html(){
     return html;
   }
   for(const s of syms){
-    const t = SYMPTOM_TYPES[s.type] || s.type;
-    const extra = s.type === 'vomit' && s.vomitContent ? `（${VOMIT_CONTENTS[s.vomitContent] || s.vomitContent}）` : '';
-    html += `<div class="mini-item"><div><span class="tag sym">症狀</span>${esc(t)}${esc(extra)} <span class="sev ${s.severity}">${SEVERITIES[s.severity] || ''}</span></div><div class="when">${fmtDT(s.timestamp)}</div></div>`;
+    html += `<div class="mini-item"><div><span class="tag sym">症狀</span>${esc(symptomText(s))} <span class="sev ${s.severity}">${SEVERITIES[s.severity] || ''}</span></div><div class="when">${fmtDT(s.timestamp)}</div></div>`;
   }
   for(const f of feeds){
     const p = productById(f.productId);
     const cat = p && p.category === 'treat' ? '<span class="tag treat">零食</span>' : '<span class="tag">罐頭</span>';
-    html += `<div class="mini-item"><div>${cat}${esc(productLabel(p))} ${f.rating ? RATINGS[f.rating].split(' ')[0] : ''}</div><div class="when">${fmtDT(f.timestamp)}</div></div>`;
+    const thumb = p && p.photo ? `<img class="mini-thumb" src="${p.photo}" alt="">` : '';
+    html += `<div class="mini-item"><div>${cat}${thumb}${esc(productLabel(p))} ${f.rating ? RATINGS[f.rating].split(' ')[0] : ''}</div><div class="when">${fmtDT(f.timestamp)}</div></div>`;
   }
   html += '</div>';
   if(!syms.length){
@@ -541,11 +643,10 @@ function buildHistoryItems(){
     });
   }
   for(const s of alive(data.symptoms)){
-    const extra = s.type === 'vomit' && s.vomitContent ? `（${VOMIT_CONTENTS[s.vomitContent] || s.vomitContent}）` : '';
     items.push({
       id:s.id, src:'symptoms', ts:s.timestamp, cat:'symptom',
       tag:'<span class="tag sym">症狀</span>',
-      title:esc((SYMPTOM_TYPES[s.type] || s.type) + extra) + ` <span class="sev ${s.severity}">${SEVERITIES[s.severity] || ''}</span>`,
+      title:esc(symptomText(s)) + ` <span class="sev ${s.severity}">${SEVERITIES[s.severity] || ''}</span>`,
       sub:[fmtDT(s.timestamp), s.notes, s.recordedBy && `by ${s.recordedBy}`].filter(Boolean).join('｜')
     });
   }
@@ -628,17 +729,24 @@ function viewVet(){
     <h3>基本狀態</h3>
     <div class="vet-line"><div class="d">主食乾糧</div><div>${data.mainFood.brand ? esc(`${data.mainFood.brand} ${data.mainFood.flavor}`) + `（每日 ${data.mainFood.mealsPerDay} 餐，自動餵食器）` : '未設定'}</div></div>
     <div class="vet-line"><div class="d">驅蟲藥</div><div>${deworm ? `最後施用 ${fmtDate(deworm.timestamp)}（${daysSince(deworm.timestamp)} 天前）` : '無紀錄'}</div></div>
+    ${(() => {
+      const cutoffDate = new Date(Date.now() - 30 * 86400000);
+      const p = n => String(n).padStart(2,'0');
+      const cd = `${cutoffDate.getFullYear()}-${p(cutoffDate.getMonth()+1)}-${p(cutoffDate.getDate())}`;
+      const checks = (data.dailyChecks || []).filter(c => c.date >= cd);
+      if(!checks.length) return '';
+      const full = checks.filter(c => c.food && c.pee && c.poop).length;
+      return `<div class="vet-line"><div class="d">每日檢查</div><div>近 30 天記錄 ${checks.length} 天，其中 ${full} 天飲食排泄全正常</div></div>`;
+    })()}
   </div>
 
   <div class="card vet-sec">
     <h3>最近 30 天症狀時間軸（${syms.length} 筆）</h3>
-    ${syms.length ? syms.map(s => {
-      const extra = s.type === 'vomit' && s.vomitContent ? `（${VOMIT_CONTENTS[s.vomitContent] || s.vomitContent}）` : '';
-      return `<div class="vet-line"><div class="d">${fmtDT(s.timestamp)}</div>
-        <div>${esc((SYMPTOM_TYPES[s.type] || s.type) + extra)}
+    ${syms.length ? syms.map(s => `<div class="vet-line"><div class="d">${fmtDT(s.timestamp)}</div>
+        <div>${esc(symptomText(s))}
         <span class="sev ${s.severity}">${SEVERITIES[s.severity] || ''}</span>
-        ${s.notes ? `<span class="muted"> ${esc(s.notes)}</span>` : ''}</div></div>`;
-    }).join('') : '<div class="muted">最近 30 天無症狀紀錄 ✅</div>'}
+        ${s.notes ? `<span class="muted"> ${esc(s.notes)}</span>` : ''}</div></div>`).join('')
+      : '<div class="muted">最近 30 天無症狀紀錄 ✅</div>'}
   </div>
 
   <div class="card vet-sec">
@@ -674,15 +782,105 @@ function viewVet(){
   <button class="btn sec no-print" onclick="window.print()">🖨️ 列印／存成 PDF</button>`;
 }
 
-// ============================ 相簿（第一版佔位） ============================
+// ============================ 相簿（Drive photos/） ============================
 function viewAlbum(){
   return `
   <h1 style="font-size:20px;margin:6px 0 12px">📷 Cody 相簿</h1>
-  <div class="card empty" style="padding:48px 20px">
-    <div style="font-size:44px">🐱📸</div>
-    <div style="font-weight:700;margin:10px 0 6px;color:var(--ink)">相簿功能即將登場</div>
-    照片會存放在共用 Google Drive 資料夾的 photos/ 中，<br>第二版就能在這裡瀏覽 Cody 的照片牆！
-  </div>`;
+  <div class="card no-print" style="margin-bottom:12px">
+    <button class="btn small" style="margin-top:0" onclick="document.getElementById('albumUpload').click()">＋ 上傳照片</button>
+    <input type="file" id="albumUpload" accept="image/*" multiple style="display:none" onchange="uploadPhotos(this)">
+    <div class="muted" id="albumStatus" style="margin-top:6px">照片以原圖存放在共用 Drive 的 photos/ 資料夾，兩人都看得到</div>
+  </div>
+  <div class="album-grid" id="albumGrid"></div>`;
+}
+
+const PHOTOS_FOLDER_NAME = 'photos';
+async function drivePhotosFolder(){
+  if(device.photosFolderId) return device.photosFolderId;
+  const q = encodeURIComponent(`'${device.folderId}' in parents and name='${PHOTOS_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`);
+  const json = await resp.json();
+  let id = json.files && json.files[0] && json.files[0].id;
+  if(!id){
+    const r2 = await driveFetch('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true', {
+      method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ name:PHOTOS_FOLDER_NAME, mimeType:'application/vnd.google-apps.folder', parents:[device.folderId] })
+    });
+    id = (await r2.json()).id;
+  }
+  device.photosFolderId = id;
+  saveDevice();
+  return id;
+}
+async function uploadPhotos(input){
+  const files = [...(input.files || [])];
+  if(!files.length) return;
+  const status = $('#albumStatus');
+  try{
+    const folderId = await drivePhotosFolder();
+    for(let i = 0; i < files.length; i++){
+      if(status) status.textContent = `上傳中 ${i + 1}/${files.length}…（原圖，請稍候）`;
+      const f = files[i];
+      const boundary = 'codyapp' + Math.random().toString(36).slice(2);
+      const meta = { name:`${Date.now()}-${f.name || 'photo.jpg'}`, parents:[folderId] };
+      const body = new Blob([
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: ${f.type || 'image/jpeg'}\r\n\r\n`,
+        f,
+        `\r\n--${boundary}--`
+      ]);
+      await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
+        method:'POST', headers:{ 'Content-Type':`multipart/related; boundary=${boundary}` }, body
+      });
+    }
+    input.value = '';
+    toast(`已上傳 ${files.length} 張照片 ☁️`);
+    loadAlbum();
+  }catch(e){
+    if(status) status.textContent = '❌ 上傳失敗：' + e.message;
+  }
+}
+async function loadAlbum(){
+  const grid = $('#albumGrid'), status = $('#albumStatus');
+  if(!grid) return;
+  if(!device.folderId){ if(status) status.textContent = '尚未設定共用資料夾'; return; }
+  try{
+    const folderId = await drivePhotosFolder();
+    const q = encodeURIComponent(`'${folderId}' in parents and trashed=false and mimeType contains 'image/'`);
+    const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,thumbnailLink,createdTime)&orderBy=createdTime desc&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true`);
+    const files = (await resp.json()).files || [];
+    if(status) status.textContent = files.length ? `共 ${files.length} 張` : '還沒有照片，按上面的按鈕上傳第一張吧';
+    grid.innerHTML = files.map(f =>
+      `<button class="album-thumb" onclick="openPhotoView('${f.id}')">
+        ${f.thumbnailLink ? `<img src="${esc(f.thumbnailLink.replace('=s220', '=s400'))}" loading="lazy" alt="">` : '📷'}
+      </button>`).join('');
+  }catch(e){
+    if(status) status.textContent = '看相簿需要先登入 Drive：到「設定」按「登入並同步」後再回來';
+  }
+}
+async function openPhotoView(fileId){
+  openModal(`${modalHead('📷 照片')}
+    <div id="photoViewBox" class="empty">載入原圖中…</div>
+    <button class="btn small danger" onclick="deletePhoto('${fileId}')">🗑️ 刪除這張照片</button>`);
+  try{
+    const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`);
+    const url = URL.createObjectURL(await resp.blob());
+    const box = $('#photoViewBox');
+    if(box) box.outerHTML = `<img src="${url}" style="width:100%;border-radius:12px" alt="">`;
+  }catch(e){
+    const box = $('#photoViewBox');
+    if(box) box.textContent = '❌ ' + e.message;
+  }
+}
+async function deletePhoto(fileId){
+  if(!confirm('確定刪除這張照片？（會從 Drive 移除，兩人都看不到）')) return;
+  try{
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`, { method:'DELETE' });
+    closeModal();
+    toast('已刪除');
+    loadAlbum();
+  }catch(e){
+    alert('刪除失敗：' + e.message);
+  }
 }
 
 // ============================ 設定 ============================
@@ -915,20 +1113,23 @@ function toggleChip(btn){
   if(multi){
     btn.classList.toggle('on');
   }else{
-    group.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+    group.querySelectorAll('[data-val]').forEach(c => c.classList.remove('on'));
     btn.classList.add('on');
   }
   if(group.dataset.chips === 'symType'){
+    const v = chipValue('symType');
     const vomitBox = $('#vomitContentBox');
-    if(vomitBox) vomitBox.style.display = chipValue('symType') === 'vomit' ? 'block' : 'none';
+    if(vomitBox) vomitBox.style.display = v === 'vomit' ? 'block' : 'none';
+    const urineBox = $('#urineContentBox');
+    if(urineBox) urineBox.style.display = v === 'urine' ? 'block' : 'none';
   }
 }
 function chipValue(name){
   const group = document.querySelector(`[data-chips="${name}"]`);
   if(!group) return null;
   if(group.dataset.multi === '1')
-    return [...group.querySelectorAll('.chip.on')].map(c => c.dataset.val);
-  const on = group.querySelector('.chip.on');
+    return [...group.querySelectorAll('[data-val].on')].map(c => c.dataset.val);
+  const on = group.querySelector('[data-val].on');
   return on ? on.dataset.val : null;
 }
 
@@ -940,15 +1141,20 @@ function openFeedingModal(category){
   const lib = alive(data.productLibrary).filter(p => p.category === category);
   openModal(`
     ${modalHead(label)}
-    <label class="f">選擇產品</label>
-    ${lib.length ? `<div class="lib-grid" data-chips="feedProduct" data-multi="0">
-      ${lib.map(p => `<button type="button" class="chip" data-val="${p.id}" onclick="toggleChip(this)">${esc(productLabel(p))}</button>`).join('')}
+    <label class="f">選擇產品（點圖快選）</label>
+    ${lib.length ? `<div class="prod-grid" data-chips="feedProduct" data-multi="0">
+      ${lib.map(p => `<button type="button" class="prod-card" data-val="${p.id}" onclick="toggleChip(this)">
+        ${p.photo ? `<img src="${p.photo}" alt="">` : `<div class="prod-noimg">${category === 'can' ? '🥫' : '🍖'}</div>`}
+        <span>${esc(productLabel(p))}</span>
+      </button>`).join('')}
     </div>` : '<div class="muted">產品庫還是空的，先新增第一個產品吧</div>'}
     <button class="btn small sec" type="button" onclick="toggleNewProduct()">＋ 新增產品</button>
     <div id="newProductBox" style="display:${lib.length ? 'none' : 'block'}">
+      <label class="f">📷 拍外包裝（之後就能看圖快選）</label>
+      <input type="file" accept="image/*" capture="environment" id="npPhoto">
       <div class="row2">
-        <div><label class="f">品牌</label><input id="npBrand"></div>
-        <div><label class="f">口味</label><input id="npFlavor"></div>
+        <div><label class="f">品牌（選填）</label><input id="npBrand"></div>
+        <div><label class="f">口味（選填）</label><input id="npFlavor"></div>
       </div>
       <label class="f">主要蛋白質（可複選）</label>
       ${chipGroupHtml('npProteins', Object.fromEntries(PROTEINS.map(p => [p,p])), [], true)}
@@ -972,22 +1178,45 @@ function toggleNewProduct(){
   const box = $('#newProductBox');
   box.style.display = box.style.display === 'none' ? 'block' : 'none';
 }
-function saveFeeding(){
+function fileToResizedDataURL(file, maxSize, quality){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(img.src);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+async function saveFeeding(){
   let productId = chipValue('feedProduct');
   const npBrand = $('#npBrand') ? $('#npBrand').value.trim() : '';
   const npFlavor = $('#npFlavor') ? $('#npFlavor').value.trim() : '';
+  const npPhotoFile = $('#npPhoto') && $('#npPhoto').files[0];
   const newBoxVisible = $('#newProductBox') && $('#newProductBox').style.display !== 'none';
 
-  if(newBoxVisible && (npBrand || npFlavor)){
+  if(newBoxVisible && (npBrand || npFlavor || npPhotoFile)){
+    let photo = '';
+    if(npPhotoFile){
+      try{ photo = await fileToResizedDataURL(npPhotoFile, 400, 0.8); }
+      catch(e){ alert('照片讀取失敗，請重試'); return; }
+    }
     const prod = {
       id: uid(), category: feedingCategory, brand: npBrand, flavor: npFlavor,
       proteins: chipValue('npProteins') || [], ingredients: $('#npIngredients').value.trim(),
+      photo,
       updatedAt: nowISO()
     };
     data.productLibrary.push(prod);
     productId = prod.id;
   }
-  if(!productId){ alert('請選擇產品或新增產品'); return; }
+  if(!productId){ alert('請選擇產品，或拍外包裝／填品牌新增產品'); return; }
 
   const timeVal = $('#feedTime').value;
   data.feedings.push({
@@ -1006,14 +1235,18 @@ function saveFeeding(){
 }
 
 // ============================ 症狀 ============================
-function openSymptomModal(){
+function openSymptomModal(presetType){
   openModal(`
     ${modalHead('🤒 記錄症狀')}
     <label class="f">症狀類型</label>
-    ${chipGroupHtml('symType', SYMPTOM_TYPES, null)}
-    <div id="vomitContentBox" style="display:none">
+    ${chipGroupHtml('symType', SYMPTOM_TYPES, presetType || null)}
+    <div id="vomitContentBox" style="display:${presetType === 'vomit' ? 'block' : 'none'}">
       <label class="f">嘔吐內容物</label>
       ${chipGroupHtml('vomitContent', VOMIT_CONTENTS, null)}
+    </div>
+    <div id="urineContentBox" style="display:${presetType === 'urine' ? 'block' : 'none'}">
+      <label class="f">排尿異常狀況</label>
+      ${chipGroupHtml('urineContent', URINE_CONTENTS, null)}
     </div>
     <label class="f">嚴重程度</label>
     ${chipGroupHtml('symSeverity', SEVERITIES, 'mild')}
@@ -1033,6 +1266,7 @@ function saveSymptom(){
     timestamp: timeVal ? new Date(timeVal).toISOString() : nowISO(),
     type,
     vomitContent: type === 'vomit' ? (chipValue('vomitContent') || '') : '',
+    urineContent: type === 'urine' ? (chipValue('urineContent') || '') : '',
     severity: chipValue('symSeverity') || 'mild',
     notes: $('#symNotes').value.trim(),
     recordedBy: me(),
@@ -1167,6 +1401,7 @@ function saveMedical(){
 
 // ============================ Charts ============================
 function afterRender(){
+  if(currentView === 'album') loadAlbum();
   if(typeof Chart === 'undefined') return;   // 離線且 CDN 未載入時，略過圖表、其餘功能照常
   const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#e08a4c';
   const baseOpts = {
