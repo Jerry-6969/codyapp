@@ -197,6 +197,9 @@
 const LS_KEY = 'codyapp-data';
 const LS_DEVICE = 'codyapp-device';   // 裝置層設定：記錄者、Drive clientId/folderId
 const DATA_FILENAME = 'cody-data.json';
+// 預設同步目標（Jerry 的共用資料夾），兩人手機免手動輸入；設定頁可覆蓋
+const DEFAULT_FOLDER_ID = '1rDVV4VHMutdH6p2C5FdP6avMuh8d8cw_';
+const DEFAULT_CLIENT_ID = '';
 
 const RATINGS = { ate_all:'😻 吃光', half:'😐 剩一半', refused:'🙈 聞了就走' };
 const PROTEINS = ['雞','魚','牛','鴨','羊','混合'];
@@ -297,8 +300,12 @@ function loadData(){
   }
 }
 function loadDevice(){
-  try{ return JSON.parse(localStorage.getItem(LS_DEVICE)) || {}; }
-  catch(e){ return {}; }
+  let d;
+  try{ d = JSON.parse(localStorage.getItem(LS_DEVICE)) || {}; }
+  catch(e){ d = {}; }
+  if(!d.folderId && DEFAULT_FOLDER_ID) d.folderId = DEFAULT_FOLDER_ID;
+  if(!d.clientId && DEFAULT_CLIENT_ID) d.clientId = DEFAULT_CLIENT_ID;
+  return d;
 }
 function saveDevice(){ localStorage.setItem(LS_DEVICE, JSON.stringify(device)); }
 
