@@ -174,6 +174,8 @@
   .prod-card.on{border-color:var(--brand);background:var(--brand-soft);}
   .prod-card span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
   .mini-thumb{width:26px;height:26px;border-radius:6px;object-fit:cover;vertical-align:-8px;margin-right:6px;}
+  .ep-photo{margin:4px 0 8px;}
+  .ep-photo img{width:140px;height:140px;object-fit:cover;border-radius:12px;border:1px solid var(--line);}
 
   /* ---------- 相簿 ---------- */
   .album-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
@@ -928,6 +930,22 @@ function viewSettings(){
   </div>
 
   <div class="card set-block">
+    <h3 style="font-size:15px">🥫 產品庫管理</h3>
+    <div class="muted">點產品可補外包裝照、改品牌口味或刪除（刪除不影響已記錄的紀錄）</div>
+    ${['can','treat'].map(cat => {
+      const items = alive(data.productLibrary).filter(p => p.category === cat);
+      if(!items.length) return '';
+      return `<div class="muted" style="margin:10px 0 4px;font-weight:700">${cat === 'can' ? '🥫 罐頭' : '🍖 零食'}（${items.length}）</div>
+      <div class="prod-grid">
+        ${items.map(p => `<button type="button" class="prod-card" onclick="openProductEditModal('${p.id}')">
+          ${p.photo ? `<img src="${p.photo}" alt="">` : `<div class="prod-noimg">${cat === 'can' ? '🥫' : '🍖'}</div>`}
+          <span>${esc(productLabel(p))}</span>
+        </button>`).join('')}
+      </div>`;
+    }).join('') || '<div class="muted" style="margin-top:8px">產品庫還是空的，記錄罐頭／零食時新增產品即可</div>'}
+  </div>
+
+  <div class="card set-block">
     <h3 style="font-size:15px">🧼 照護項目與週期</h3>
     ${defs.map(d => `
       <div class="care-def-row">
@@ -1177,6 +1195,64 @@ function openFeedingModal(category){
 function toggleNewProduct(){
   const box = $('#newProductBox');
   box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+function openProductEditModal(id){
+  const p = productById(id);
+  if(!p) return;
+  const catLabel = p.category === 'can' ? '罐頭' : '零食';
+  openModal(`
+    ${modalHead(`✏️ 編輯${catLabel}產品`)}
+    <label class="f">📷 外包裝照片</label>
+    <div id="epPhotoPreview" class="ep-photo">
+      ${p.photo ? `<img src="${p.photo}" alt="">` : `<div class="prod-noimg" style="width:100px">${p.category === 'can' ? '🥫' : '🍖'}</div>`}
+    </div>
+    <input type="file" accept="image/*" capture="environment" id="epPhoto" onchange="previewEpPhoto(this)">
+    <div class="muted">選新照片會取代舊的；不選則保留原照片</div>
+    <div class="row2">
+      <div><label class="f">品牌</label><input id="epBrand" value="${esc(p.brand || '')}"></div>
+      <div><label class="f">口味</label><input id="epFlavor" value="${esc(p.flavor || '')}"></div>
+    </div>
+    <label class="f">主要蛋白質（可複選）</label>
+    ${chipGroupHtml('epProteins', Object.fromEntries(PROTEINS.map(x => [x,x])), p.proteins || [], true)}
+    <label class="f">成分備註</label>
+    <input id="epIngredients" value="${esc(p.ingredients || '')}">
+    <button class="btn" onclick="saveProductEdit('${id}')">儲存變更</button>
+    <button class="btn sec danger" onclick="deleteProduct('${id}')">🗑️ 刪除此產品</button>
+  `);
+}
+function previewEpPhoto(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const url = URL.createObjectURL(file);
+  const box = $('#epPhotoPreview');
+  if(box) box.innerHTML = `<img src="${url}" alt="">`;
+}
+async function saveProductEdit(id){
+  const p = productById(id);
+  if(!p) return;
+  const photoFile = $('#epPhoto') && $('#epPhoto').files[0];
+  if(photoFile){
+    try{ p.photo = await fileToResizedDataURL(photoFile, 400, 0.8); }
+    catch(e){ alert('照片讀取失敗，請重試'); return; }
+  }
+  p.brand = $('#epBrand').value.trim();
+  p.flavor = $('#epFlavor').value.trim();
+  p.proteins = chipValue('epProteins') || [];
+  p.ingredients = $('#epIngredients').value.trim();
+  p.updatedAt = nowISO();
+  saveData();
+  closeModal();
+  toast('已更新產品');
+}
+function deleteProduct(id){
+  const p = productById(id);
+  if(!p) return;
+  if(!confirm(`確定刪除產品「${productLabel(p)}」？\n（已記錄的餵食紀錄仍會保留顯示，只是不再出現在快選清單）`)) return;
+  p.deleted = true;
+  p.updatedAt = nowISO();
+  saveData();
+  closeModal();
+  toast('已刪除產品');
 }
 function fileToResizedDataURL(file, maxSize, quality){
   return new Promise((resolve, reject) => {
