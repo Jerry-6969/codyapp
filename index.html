@@ -140,9 +140,10 @@
   /* ---------- bottom nav ---------- */
   nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:0.5px solid var(--border);
            display:flex;z-index:40;padding-bottom:env(safe-area-inset-bottom);}
-  nav.tabs button{flex:1;background:none;padding:9px 0 7px;font-size:11px;color:var(--text2);
-                  display:flex;flex-direction:column;align-items:center;gap:1px;font-weight:400;}
-  nav.tabs button .ic{font-size:21px;}
+  nav.tabs button{flex:1;background:none;padding:8px 0 7px;font-size:11px;color:var(--text2);
+                  display:flex;flex-direction:column;align-items:center;gap:3px;font-weight:400;}
+  nav.tabs button svg.ic{width:23px;height:23px;stroke:currentColor;fill:none;
+                  stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
   nav.tabs button.on{color:var(--accent-text);}
 
   /* ---------- history ---------- */
@@ -258,11 +259,16 @@
 <main id="app"></main>
 
 <nav class="tabs no-print" id="tabs">
-  <button data-v="home"><span class="ic">🏠</span>首頁</button>
-  <button data-v="history"><span class="ic">📋</span>紀錄</button>
-  <button data-v="vet"><span class="ic">🩺</span>看診</button>
-  <button data-v="album"><span class="ic">📷</span>相簿</button>
-  <button data-v="settings"><span class="ic">⚙️</span>設定</button>
+  <button data-v="home">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5"/><path d="M6.5 10.2V19.5h11V10.2"/><path d="M10 19.5v-4.2h4v4.2"/></svg>首頁</button>
+  <button data-v="history">
+    <svg class="ic" viewBox="0 0 24 24"><rect x="5" y="4.5" width="14" height="16" rx="2.5"/><path d="M9 3.6h6a1 1 0 0 1 1 1V6H8V4.6a1 1 0 0 1 1-1z"/><path d="M8.5 11h7M8.5 14.5h4.5"/></svg>紀錄</button>
+  <button data-v="vet">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M5 4v4.3a4 4 0 0 0 8 0V4"/><path d="M3.6 4h2.8M11.6 4h2.8"/><path d="M9 12.3v2.2a4 4 0 0 0 8 0V13.6"/><circle cx="18" cy="11.3" r="2.1"/></svg>看診</button>
+  <button data-v="album">
+    <svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="8.3" cy="10" r="1.5"/><path d="M4.5 17.5 9 13l3 2.5 3.5-3.5 4 4"/></svg>相簿</button>
+  <button data-v="settings">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M4 7.5h16M4 12h16M4 16.5h16"/><circle cx="9" cy="7.5" r="1.9" fill="var(--card)"/><circle cx="15" cy="12" r="1.9" fill="var(--card)"/><circle cx="8" cy="16.5" r="1.9" fill="var(--card)"/></svg>設定</button>
 </nav>
 
 <div class="modal-back" id="modalBack"><div class="modal" id="modalBox"></div></div>
