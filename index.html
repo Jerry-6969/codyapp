@@ -200,9 +200,42 @@
   .ep-photo img{width:140px;height:140px;object-fit:cover;border-radius:12px;border:0.5px solid var(--border);}
 
   /* ---------- 相簿 ---------- */
-  .album-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .album-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:16px;}
   .album-thumb{aspect-ratio:1;border-radius:var(--radius-sm);overflow:hidden;background:var(--accent-bg);border:none;padding:0;font-size:26px;}
   .album-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .album-day-h{font-size:13px;color:var(--text2);margin:4px 2px 8px;}
+  /* 輪播跑馬燈 */
+  .carousel{position:relative;aspect-ratio:4/3;border-radius:var(--radius);overflow:hidden;
+            background:var(--accent-bg);margin-bottom:6px;}
+  .carousel .slide{position:absolute;inset:0;opacity:0;transition:opacity .8s ease;}
+  .carousel .slide.active{opacity:1;}
+  .carousel .slide img{width:100%;height:100%;object-fit:cover;}
+  .carousel-date{position:absolute;left:12px;bottom:11px;color:#fff;font-size:13px;
+                 background:rgba(0,0,0,.32);padding:3px 11px;border-radius:20px;backdrop-filter:blur(3px);}
+  .carousel-dots{position:absolute;right:11px;bottom:14px;display:flex;gap:4px;}
+  .carousel-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);transition:background .3s;}
+  .carousel-dots i.on{background:#fff;}
+  /* 全螢幕看圖 */
+  .viewer-back{position:fixed;inset:0;background:rgba(28,25,22,.96);z-index:70;display:none;
+               flex-direction:column;align-items:center;justify-content:center;}
+  .viewer-back.show{display:flex;}
+  .viewer-top{position:absolute;top:0;left:0;right:0;z-index:3;display:flex;justify-content:space-between;align-items:center;
+              padding:calc(env(safe-area-inset-top) + 8px) 14px 8px;color:#fff;font-size:13px;
+              background:linear-gradient(rgba(0,0,0,.35),transparent);}
+  .viewer-bottom{position:absolute;bottom:0;left:0;right:0;z-index:3;display:flex;justify-content:space-between;align-items:center;
+                 padding:12px 16px calc(env(safe-area-inset-bottom) + 14px);color:#fff;
+                 background:linear-gradient(transparent,rgba(0,0,0,.4));}
+  .viewer-date{font-size:14px;}
+  .viewer-btn{background:rgba(255,255,255,.14);color:#fff;border-radius:50%;width:38px;height:38px;font-size:17px;
+              display:flex;align-items:center;justify-content:center;}
+  .viewer-img{width:100%;height:100%;display:flex;align-items:center;justify-content:center;position:relative;z-index:1;}
+  .viewer-img img{max-width:100%;max-height:100%;object-fit:contain;}
+  .viewer-img .viewer-blur{position:absolute;filter:blur(14px);opacity:.5;max-width:80%;}
+  .viewer-loading{position:absolute;color:rgba(255,255,255,.85);font-size:14px;}
+  .viewer-arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:2;
+                background:rgba(255,255,255,.12);color:#fff;width:40px;height:56px;border-radius:10px;font-size:26px;
+                display:flex;align-items:center;justify-content:center;}
+  .viewer-arrow.prev{left:8px;} .viewer-arrow.next{right:8px;}
   .kv-row{display:grid;grid-template-columns:1fr 1fr 34px;gap:8px;margin-top:8px;align-items:center;}
   .kv-row button{background:none;color:var(--danger);font-size:18px;}
   .care-def-row{display:grid;grid-template-columns:1fr 84px 34px;gap:8px;margin-top:8px;align-items:center;}
@@ -233,6 +266,22 @@
 </nav>
 
 <div class="modal-back" id="modalBack"><div class="modal" id="modalBox"></div></div>
+
+<div class="viewer-back" id="viewerBack" onclick="closeViewer()"
+     ontouchstart="viewerTouchStart(event)" ontouchend="viewerTouchEnd(event)">
+  <div class="viewer-top" onclick="event.stopPropagation()">
+    <span id="viewerCounter"></span>
+    <button class="viewer-btn" onclick="closeViewer()">✕</button>
+  </div>
+  <button class="viewer-arrow prev" onclick="viewerNav(-1,event)">‹</button>
+  <div class="viewer-img" id="viewerImg" onclick="event.stopPropagation()"></div>
+  <button class="viewer-arrow next" onclick="viewerNav(1,event)">›</button>
+  <div class="viewer-bottom" onclick="event.stopPropagation()">
+    <span class="viewer-date" id="viewerDate"></span>
+    <button class="viewer-btn" onclick="deleteCurrentPhoto(event)">🗑️</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -504,6 +553,7 @@ function destroyCharts(){ charts.forEach(c => c.destroy()); charts = []; }
 
 function render(){
   destroyCharts();
+  stopCarousel();
   document.querySelectorAll('#tabs button').forEach(b =>
     b.classList.toggle('on', b.dataset.v === currentView));
   const app = $('#app');
@@ -813,13 +863,37 @@ function viewVet(){
 // ============================ 相簿（Drive photos/） ============================
 function viewAlbum(){
   return `
-  <h1 style="font-size:20px;margin:6px 0 12px">📷 Cody 相簿</h1>
-  <div class="card no-print" style="margin-bottom:12px">
-    <button class="btn small" style="margin-top:0" onclick="document.getElementById('albumUpload').click()">＋ 上傳照片</button>
-    <input type="file" id="albumUpload" accept="image/*" multiple style="display:none" onchange="uploadPhotos(this)">
-    <div class="muted" id="albumStatus" style="margin-top:6px">照片以原圖存放在共用 Drive 的 photos/ 資料夾，兩人都看得到</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin:6px 0 12px">
+    <h1 style="font-size:20px">📷 Cody 相簿</h1>
+    <button class="btn small" style="margin:0;width:auto;padding:9px 16px" onclick="document.getElementById('albumUpload').click()">＋ 上傳</button>
   </div>
-  <div class="album-grid" id="albumGrid"></div>`;
+  <input type="file" id="albumUpload" accept="image/*" multiple style="display:none" onchange="uploadPhotos(this)">
+  <div id="carouselHolder"></div>
+  <div class="muted" id="albumStatus" style="margin:4px 2px 12px">照片以原圖存放在共用 Drive 的 photos/ 資料夾，兩人都看得到</div>
+  <div id="albumGroups"></div>`;
+}
+
+// 相簿狀態
+let albumPhotos = [];
+let albumTimer = null;
+let carouselIdx = 0;
+let viewerIdx = 0;
+let viewerURL = null;
+
+function stopCarousel(){ if(albumTimer){ clearInterval(albumTimer); albumTimer = null; } }
+
+function photoDate(f){ return new Date(f.createdTime || Date.now()); }
+function photoDayKey(f){
+  const d = photoDate(f), p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+function photoDayLabel(key){
+  const d = new Date(key + 'T00:00:00');
+  const wd = ['週日','週一','週二','週三','週四','週五','週六'][d.getDay()];
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 · ${wd}`;
+}
+function thumbUrl(f, size){
+  return f.thumbnailLink ? f.thumbnailLink.replace(/=s\d+.*$/, '=s' + size) : '';
 }
 
 const PHOTOS_FOLDER_NAME = 'photos';
@@ -868,47 +942,128 @@ async function uploadPhotos(input){
   }
 }
 async function loadAlbum(){
-  const grid = $('#albumGrid'), status = $('#albumStatus');
-  if(!grid) return;
+  const status = $('#albumStatus');
+  const groups = $('#albumGroups'), carousel = $('#carouselHolder');
+  if(!groups) return;
   if(!device.folderId){ if(status) status.textContent = '尚未設定共用資料夾'; return; }
   try{
     const folderId = await drivePhotosFolder();
     const q = encodeURIComponent(`'${folderId}' in parents and trashed=false and mimeType contains 'image/'`);
-    const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,thumbnailLink,createdTime)&orderBy=createdTime desc&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true`);
-    const files = (await resp.json()).files || [];
-    if(status) status.textContent = files.length ? `共 ${files.length} 張` : '還沒有照片，按上面的按鈕上傳第一張吧';
-    grid.innerHTML = files.map(f =>
-      `<button class="album-thumb" onclick="openPhotoView('${f.id}')">
-        ${f.thumbnailLink ? `<img src="${esc(f.thumbnailLink.replace('=s220', '=s400'))}" loading="lazy" alt="">` : '📷'}
-      </button>`).join('');
+    const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,thumbnailLink,createdTime)&orderBy=createdTime desc&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`);
+    albumPhotos = (await resp.json()).files || [];
+    if(status) status.textContent = albumPhotos.length ? `共 ${albumPhotos.length} 張 · 點照片可放大瀏覽` : '還沒有照片，按右上角「上傳」放上第一張 Cody 吧 🐱';
+    buildCarousel();
+    buildAlbumGroups();
   }catch(e){
+    albumPhotos = [];
+    if(carousel) carousel.innerHTML = '';
+    if(groups) groups.innerHTML = '';
     if(status) status.textContent = '看相簿需要先登入 Drive：到「設定」按「登入並同步」後再回來';
   }
 }
-async function openPhotoView(fileId){
-  openModal(`${modalHead('📷 照片')}
-    <div id="photoViewBox" class="empty">載入原圖中…</div>
-    <button class="btn small danger" onclick="deletePhoto('${fileId}')">🗑️ 刪除這張照片</button>`);
+
+function buildCarousel(){
+  const holder = $('#carouselHolder');
+  if(!holder) return;
+  stopCarousel();
+  const slides = albumPhotos.slice(0, 10);   // 最近 10 張輪播
+  if(slides.length < 2){ holder.innerHTML = ''; return; }
+  carouselIdx = 0;
+  holder.innerHTML = `<div class="carousel" onclick="openViewer(carouselIdx)">
+    ${slides.map((f,i) => `<div class="slide ${i===0?'active':''}"><img src="${esc(thumbUrl(f,800))}" alt=""></div>`).join('')}
+    <div class="carousel-date" id="carouselDate">${photoDayLabel(photoDayKey(slides[0]))}</div>
+    <div class="carousel-dots">${slides.map((_,i) => `<i class="${i===0?'on':''}"></i>`).join('')}</div>
+  </div>`;
+  albumTimer = setInterval(() => {
+    const el = $('#carouselHolder .carousel');
+    if(!el){ stopCarousel(); return; }
+    const sl = el.querySelectorAll('.slide'), dots = el.querySelectorAll('.carousel-dots i');
+    sl[carouselIdx].classList.remove('active'); dots[carouselIdx].classList.remove('on');
+    carouselIdx = (carouselIdx + 1) % sl.length;
+    sl[carouselIdx].classList.add('active'); dots[carouselIdx].classList.add('on');
+    const dl = $('#carouselDate');
+    if(dl) dl.textContent = photoDayLabel(photoDayKey(slides[carouselIdx]));
+  }, 3500);
+}
+
+function buildAlbumGroups(){
+  const holder = $('#albumGroups');
+  if(!holder) return;
+  if(!albumPhotos.length){ holder.innerHTML = ''; return; }
+  const groups = {};
+  albumPhotos.forEach((f, idx) => {
+    const k = photoDayKey(f);
+    (groups[k] = groups[k] || []).push(idx);
+  });
+  const keys = Object.keys(groups).sort().reverse();
+  holder.innerHTML = keys.map(k => `
+    <div class="album-day-h">${photoDayLabel(k)} · ${groups[k].length} 張</div>
+    <div class="album-grid">
+      ${groups[k].map(idx => {
+        const f = albumPhotos[idx];
+        return `<button class="album-thumb" onclick="openViewer(${idx})">
+          ${f.thumbnailLink ? `<img src="${esc(thumbUrl(f,400))}" loading="lazy" alt="">` : '📷'}
+        </button>`;
+      }).join('')}
+    </div>`).join('');
+}
+
+async function openViewer(idx){
+  viewerIdx = idx;
+  const back = $('#viewerBack');
+  back.classList.add('show');
+  await loadViewerPhoto();
+}
+async function loadViewerPhoto(){
+  const f = albumPhotos[viewerIdx];
+  if(!f) return;
+  const imgBox = $('#viewerImg'), dateEl = $('#viewerDate'), counter = $('#viewerCounter');
+  if(dateEl) dateEl.textContent = photoDayLabel(photoDayKey(f));
+  if(counter) counter.textContent = `${viewerIdx + 1} / ${albumPhotos.length}`;
+  if(imgBox) imgBox.innerHTML = `<div class="viewer-loading">載入原圖中…</div>
+    <img src="${esc(thumbUrl(f, 400))}" class="viewer-blur" alt="">`;   // 先用縮圖佔位
   try{
-    const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`);
-    const url = URL.createObjectURL(await resp.blob());
-    const box = $('#photoViewBox');
-    if(box) box.outerHTML = `<img src="${url}" style="width:100%;border-radius:12px" alt="">`;
+    const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media&supportsAllDrives=true`);
+    if(viewerURL) URL.revokeObjectURL(viewerURL);
+    viewerURL = URL.createObjectURL(await resp.blob());
+    if($('#viewerImg') && albumPhotos[viewerIdx] === f)   // 使用者可能已切下一張
+      $('#viewerImg').innerHTML = `<img src="${viewerURL}" alt="">`;
   }catch(e){
-    const box = $('#photoViewBox');
-    if(box) box.textContent = '❌ ' + e.message;
+    if($('#viewerImg')) $('#viewerImg').innerHTML = `<div class="viewer-loading">❌ ${esc(e.message)}</div>`;
   }
 }
-async function deletePhoto(fileId){
+function viewerNav(dir, ev){
+  if(ev) ev.stopPropagation();
+  if(!albumPhotos.length) return;
+  viewerIdx = (viewerIdx + dir + albumPhotos.length) % albumPhotos.length;
+  loadViewerPhoto();
+}
+function closeViewer(){
+  $('#viewerBack').classList.remove('show');
+  if(viewerURL){ URL.revokeObjectURL(viewerURL); viewerURL = null; }
+}
+async function deleteCurrentPhoto(ev){
+  if(ev) ev.stopPropagation();
+  const f = albumPhotos[viewerIdx];
+  if(!f) return;
   if(!confirm('確定刪除這張照片？（會從 Drive 移除，兩人都看不到）')) return;
   try{
-    await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`, { method:'DELETE' });
-    closeModal();
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${f.id}?supportsAllDrives=true`, { method:'DELETE' });
+    closeViewer();
     toast('已刪除');
     loadAlbum();
   }catch(e){
     alert('刪除失敗：' + e.message);
   }
+}
+// 看圖時左右滑動切換
+let viewerTouchX = null;
+function viewerTouchStart(e){ viewerTouchX = e.changedTouches[0].clientX; }
+function viewerTouchEnd(e){
+  if(viewerTouchX === null) return;
+  const dx = e.changedTouches[0].clientX - viewerTouchX;
+  if(Math.abs(dx) > 45) viewerNav(dx < 0 ? 1 : -1);
+  viewerTouchX = null;
 }
 
 // ============================ 設定 ============================
