@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9AAC8C"/>
+      <stop offset="1" stop-color="#899C7B"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.46" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 背景（iOS 會自動裁圓角） -->
+  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="228" fill="url(#glow)"/>
+
+  <!-- 耳朵 -->
+  <path d="M300 430 C286 300 296 236 330 214 C372 214 452 300 486 386 Z" fill="#FBF7EF"/>
+  <path d="M724 430 C738 300 728 236 694 214 C652 214 572 300 538 386 Z" fill="#FBF7EF"/>
+  <path d="M330 402 C322 322 330 280 350 268 C378 274 424 330 446 388 Z" fill="#E7C4BC"/>
+  <path d="M694 402 C702 322 694 280 674 268 C646 274 600 330 578 388 Z" fill="#E7C4BC"/>
+
+  <!-- 頭 -->
+  <ellipse cx="512" cy="560" rx="286" ry="266" fill="#FBF7EF"/>
+
+  <!-- 虎斑細節（美短額頭 M 紋，低調） -->
+  <g stroke="#D9CDBB" stroke-width="15" stroke-linecap="round" fill="none" opacity="0.85">
+    <path d="M512 352 L512 420"/>
+    <path d="M470 360 C486 392 496 404 502 424"/>
+    <path d="M554 360 C538 392 528 404 522 424"/>
+  </g>
+
+  <!-- 腮紅 -->
+  <ellipse cx="360" cy="642" rx="52" ry="34" fill="#F0D6CB" opacity="0.75"/>
+  <ellipse cx="664" cy="642" rx="52" ry="34" fill="#F0D6CB" opacity="0.75"/>
+
+  <!-- 眼睛 -->
+  <g fill="#3D3833">
+    <ellipse cx="408" cy="576" rx="50" ry="56"/>
+    <ellipse cx="616" cy="576" rx="50" ry="56"/>
+  </g>
+  <g fill="#ffffff">
+    <circle cx="392" cy="558" r="17"/>
+    <circle cx="600" cy="558" r="17"/>
+  </g>
+
+  <!-- 鼻子 + 嘴 -->
+  <path d="M492 636 C492 628 532 628 532 636 C532 650 512 662 512 662 C512 662 492 650 492 636 Z" fill="#C98C7C"/>
+  <path d="M512 662 C512 682 486 690 470 676" stroke="#C98C7C" stroke-width="11" fill="none" stroke-linecap="round"/>
+  <path d="M512 662 C512 682 538 690 554 676" stroke="#C98C7C" stroke-width="11" fill="none" stroke-linecap="round"/>
+
+  <!-- 鬍鬚 -->
+  <g stroke="#E4D8C7" stroke-width="10" stroke-linecap="round" opacity="0.9">
+    <path d="M300 606 C348 600 372 604 404 616"/>
+    <path d="M296 660 C346 660 374 666 404 678"/>
+    <path d="M724 606 C676 600 652 604 620 616"/>
+    <path d="M728 660 C678 660 650 666 620 678"/>
+  </g>
+</svg>
