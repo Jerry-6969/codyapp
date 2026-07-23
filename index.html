@@ -141,8 +141,8 @@
 
   /* ---------- bottom nav ---------- */
   nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:0.5px solid var(--border);
-           display:flex;z-index:40;padding-bottom:env(safe-area-inset-bottom);}
-  nav.tabs button{flex:1;background:none;padding:8px 0 7px;font-size:11px;color:var(--text2);
+           display:flex;z-index:40;padding-bottom:max(4px, calc(env(safe-area-inset-bottom) - 12px));}
+  nav.tabs button{flex:1;background:none;padding:7px 0 5px;font-size:11px;color:var(--text2);
                   display:flex;flex-direction:column;align-items:center;gap:3px;font-weight:400;}
   nav.tabs button svg.ic{width:23px;height:23px;stroke:currentColor;fill:none;
                   stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
@@ -712,8 +712,20 @@ function viewHistory(){
       </div>
       <button class="del" onclick="deleteRecord('${i.src}','${i.id}')">🗑️</button>
     </div>`).join('')
-    : '<div class="empty">沒有符合的紀錄</div>'}`;
+    : `<div class="empty">沒有符合的紀錄</div>${cloudRestoreHint()}`}`;
 }
+// 這台裝置沒資料、但有設定雲端時，提示可從 Drive 還原（換裝置/加到主畫面常見）
+function cloudRestoreHint(){
+  const noData = !alive(data.feedings).length && !alive(data.symptoms).length &&
+                 !alive(data.weights).length && !alive(data.medical).length &&
+                 !alive(data.careTasks.logs).length;
+  if(!noData || !device.folderId) return '';
+  return `<div class="card" style="margin-top:12px;text-align:center">
+    <div class="muted" style="margin-bottom:10px">這台裝置目前沒有紀錄。<br>如果你之前在別的裝置記過，資料還在雲端，按下面就能還原 👇</div>
+    <button class="btn small" style="margin:0" onclick="currentView='settings';render();setTimeout(connectAndSync,150)">☁️ 從 Google Drive 還原資料</button>
+  </div>`;
+}
+function setHistoryFilter(f){ historyFilter = f; render(); }
 function setHistoryFilter(f){ historyFilter = f; render(); }
 
 function buildHistoryItems(){
@@ -1179,7 +1191,7 @@ function viewSettings(){
   <div class="muted" style="text-align:center;margin-top:18px">Codyapp v1.0 · 為 Cody 而做 🐾</div>`;
 }
 
-function setUser(u){ device.user = u; saveDevice(); render(); toast(`記錄者：${u}`); }
+function setUser(u){ device.user = u; saveDevice(); render(); toast(`記錄者：${u}`); autoSyncOnLoad(); }
 
 function savePetInfo(){
   data.petInfo.name = $('#petName').value.trim() || 'Cody';
@@ -1873,11 +1885,31 @@ function scheduleSync(){
 }
 window.addEventListener('online', () => scheduleSync());
 
+// 開啟 App 時自動從 Drive 拉回資料（追加合併，只會補齊不會清空）。
+// 用靜默授權（prompt:''）：曾登入過的裝置會自動同步；未登入則安靜略過，
+// 不跳視窗、不影響本機記錄。這是「換裝置／加到主畫面後資料還在」的保障。
+let autoSyncTried = false;
+function autoSyncOnLoad(){
+  if(autoSyncTried) return;
+  if(!device.user || !device.clientId || !device.folderId || !navigator.onLine) return;
+  autoSyncTried = true;
+  let tries = 0;
+  const attempt = () => {
+    if(window.google && google.accounts && google.accounts.oauth2){
+      syncNow();   // 內部用 prompt:'' 靜默取權杖，失敗只記錄狀態不跳視窗
+    }else if(tries++ < 25){
+      setTimeout(attempt, 300);
+    }
+  };
+  setTimeout(attempt, 500);
+}
+
 // ============================ init ============================
 document.querySelectorAll('#tabs button').forEach(b => {
   b.addEventListener('click', () => { currentView = b.dataset.v; render(); });
 });
 render();
+autoSyncOnLoad();   // 返回的裝置：一開 App 就自動把雲端資料合併回來
 
 // 首次使用：選擇記錄者
 if(!device.user){
