@@ -99,7 +99,17 @@
   .feed-row:last-child{border-bottom:none;padding-bottom:0;}
   .feed-row .fn{font-size:13px;display:flex;align-items:center;gap:6px;}
   .feed-row .fm{font-size:11px;color:var(--muted);margin-top:2px;}
+  .feed-row .feed-main{flex:1;min-width:0;cursor:pointer;}
   .pill{font-size:11px;padding:3px 10px;border-radius:20px;flex:0 0 auto;white-space:nowrap;}
+  /* 待評分：一鍵補上吃光/剩一半/聞了就走 */
+  .rate-quick{display:flex;align-items:center;gap:4px;flex:0 0 auto;}
+  .rate-hint{font-size:10px;color:var(--muted);margin-right:2px;}
+  .rate-btn{width:32px;height:32px;border-radius:50%;font-size:15px;line-height:1;
+            border:0.5px solid var(--border);background:var(--card);display:flex;
+            align-items:center;justify-content:center;padding:0;}
+  .rate-btn.ok{background:var(--ok-bg);border-color:#c3d3b9;}
+  .rate-btn.warn{background:var(--warn-bg);border-color:#e6d3a8;}
+  .rate-btn.danger{background:var(--danger-bg);border-color:#e3c3b6;}
   .pill.ok{background:var(--ok-bg);color:var(--ok-text);}
   .pill.warn{background:var(--warn-bg);color:var(--warn-text);}
   .pill.danger{background:var(--danger-bg);color:var(--danger-text);}
@@ -198,6 +208,7 @@
   .prod-noimg{display:flex;align-items:center;justify-content:center;font-size:30px;background:var(--bg);}
   .prod-card.on{border-color:var(--accent);background:var(--accent-bg);}
   .prod-card span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
+  .prod-card .prod-last{font-size:10px;color:var(--muted);}
   .mini-thumb{width:26px;height:26px;border-radius:6px;object-fit:cover;vertical-align:-8px;margin-right:6px;}
   .ep-photo{margin:4px 0 8px;}
   .ep-photo img{width:140px;height:140px;object-fit:cover;border-radius:12px;border:0.5px solid var(--border);}
@@ -364,6 +375,23 @@ function todayInput(){
   const d = new Date(), p = n => String(n).padStart(2,'0');
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 }
+function dateKey(d){
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+function dayStartHour(){
+  const h = (data.settings || {}).dayStartHour;
+  return (typeof h === 'number' && h >= 0 && h <= 12) ? h : 4;
+}
+// 記錄日：凌晨 dayStartHour 之前算「前一天」，配合半夜才記錄的作息
+function logicalDayKey(dt){
+  const d = new Date(dt || Date.now());
+  if(d.getHours() < dayStartHour()) d.setDate(d.getDate() - 1);
+  return dateKey(d);
+}
+function logicalToday(){ return logicalDayKey(); }
+// 目前是否處於「昨晚延續」的時段（供 UI 提示用）
+function isPastMidnightSession(){ return logicalToday() !== todayInput(); }
 function toast(msg){
   const t = $('#toast');
   t.textContent = msg;
@@ -376,8 +404,9 @@ function toast(msg){
 function defaultData(){
   return {
     metadata: { version:'1.0', lastSync:'' },
+    settings: { dayStartHour:4, updatedAt:'' },   // 凌晨 4 點前記錄算前一天
     petInfo: { name:'Cody', birthDate:'2024-02-26', breed:'美國短毛貓', photoUrl:'', updatedAt:'' },
-    mainFood: { brand:'', flavor:'', mealsPerDay:6, updatedAt:'', history:[] },
+    mainFood: { brand:'', flavor:'', mealsPerDay:5, gramsPerMeal:10, updatedAt:'', history:[] },
     productLibrary: [],
     feedings: [],
     symptoms: [],
@@ -387,6 +416,7 @@ function defaultData(){
         { id:'ear',    name:'洗耳朵', cycleDays:7,  updatedAt:'' },
         { id:'teeth',  name:'刷牙',   cycleDays:3,  updatedAt:'' },
         { id:'water',  name:'換水',   cycleDays:1,  updatedAt:'' },
+        { id:'brush',  name:'梳毛',   cycleDays:3,  updatedAt:'' },
         { id:'deworm', name:'驅蟲藥', cycleDays:30, updatedAt:'' }
       ],
       logs: []
@@ -451,6 +481,7 @@ function mergeData(base, incoming){
   const out = {};
   out.metadata = { version:'1.0',
     lastSync: [(a.metadata||{}).lastSync||'', (b.metadata||{}).lastSync||''].sort().pop() };
+  out.settings = { ...d.settings, ...newerObj(a.settings, b.settings) };
   out.petInfo  = { ...d.petInfo,  ...newerObj(a.petInfo,  b.petInfo)  };
   const mfA = a.mainFood || d.mainFood, mfB = b.mainFood;
   out.mainFood = { ...d.mainFood, ...newerObj(mfA, mfB) };
@@ -521,10 +552,10 @@ function symptomText(s){
   return t;
 }
 function todayCheck(){
-  return (data.dailyChecks || []).find(c => c.date === todayInput());
+  return (data.dailyChecks || []).find(c => c.date === logicalToday());
 }
 function toggleDailyCheck(key){
-  const t = todayInput();
+  const t = logicalToday();
   data.dailyChecks = data.dailyChecks || [];
   let c = data.dailyChecks.find(x => x.date === t);
   if(!c){
@@ -539,12 +570,10 @@ function toggleDailyCheck(key){
 function dailyStreak(){
   const m = new Map((data.dailyChecks || []).map(c => [c.date, c]));
   const full = c => c && c.food && c.pee && c.poop;
-  const p = n => String(n).padStart(2,'0');
-  const key = d => `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
   let streak = 0;
-  const d = new Date();
-  if(!full(m.get(key(d)))) d.setDate(d.getDate() - 1);   // 今天還沒勾完就從昨天往回算
-  while(full(m.get(key(d)))){ streak++; d.setDate(d.getDate() - 1); }
+  const d = new Date(logicalToday() + 'T12:00:00');
+  if(!full(m.get(dateKey(d)))) d.setDate(d.getDate() - 1);   // 今天還沒勾完就從昨天往回算
+  while(full(m.get(dateKey(d)))){ streak++; d.setDate(d.getDate() - 1); }
   return streak;
 }
 function nextMedicalDue(){
@@ -603,8 +632,11 @@ function viewHome(){
       : `<div class="health-banner good">✓ 近 7 天無異常症狀</div>`}
   </div>
 
-  <h2>今日檢查</h2>
+  <h2>今日檢查${isPastMidnightSession() ? ` · ${fmtShortDate(logicalToday())}（昨晚）` : ''}</h2>
   <div class="card">
+    ${isPastMidnightSession()
+      ? `<div class="muted" style="margin:-2px 0 10px">現在是凌晨，這裡記的是 ${fmtShortDate(logicalToday())} 的狀況（${dayStartHour()} 點後才算新的一天）</div>`
+      : ''}
     <div class="dc-row">
       ${DAILY_ITEMS.map(it => {
         const c = todayCheck();
@@ -670,25 +702,41 @@ function viewHome(){
   return html;
 }
 
+const RATING_PILL = { ate_all:'ok', half:'warn', refused:'danger' };
+function ratingLabel(r){ return r ? RATINGS[r].replace(/^\S+\s/, '') : ''; }
+
 function recentFeedHtml(){
   const feeds = alive(data.feedings).sort((a,b) => (a.timestamp > b.timestamp ? -1 : 1)).slice(0, 5);
   if(!feeds.length) return '<div class="empty" style="padding:8px 0">還沒有餵食紀錄，點下方「記罐頭」開始</div>';
-  const ratingPill = { ate_all:'ok', half:'warn', refused:'danger' };
   return feeds.map(f => {
     const p = productById(f.productId);
     const isTreat = p && p.category === 'treat';
     const thumb = p && p.photo ? `<img class="mini-thumb" src="${p.photo}" alt="">` : '';
-    const meta = [fmtDT(f.timestamp), isTreat ? '零食' : (f.replacedLastMeal ? '取代最後一餐' : '罐頭'), f.recordedBy].filter(Boolean).join(' · ');
-    const rk = f.rating ? ratingPill[f.rating] : '';
-    const rlabel = f.rating ? RATINGS[f.rating].replace(/^\S+\s/, '') : '';
+    const meta = [fmtDT(f.timestamp), isTreat ? '零食' : (f.replacedLastMeal ? '取代一餐乾糧' : '罐頭'), f.recordedBy].filter(Boolean).join(' · ');
     return `<div class="feed-row">
-      <div>
+      <div class="feed-main" onclick="openFeedingEditModal('${f.id}')">
         <div class="fn">${thumb}${esc(productLabel(p))}</div>
         <div class="fm">${esc(meta)}</div>
       </div>
-      ${f.rating ? `<span class="pill ${rk}">${rlabel}</span>` : ''}
+      ${f.rating
+        ? `<span class="pill ${RATING_PILL[f.rating]}" onclick="openFeedingEditModal('${f.id}')">${ratingLabel(f.rating)}</span>`
+        : `<div class="rate-quick">
+             <span class="rate-hint">待評分</span>
+             ${Object.keys(RATINGS).map(k =>
+               `<button class="rate-btn ${RATING_PILL[k]}" title="${ratingLabel(k)}"
+                  onclick="setFeedingRating('${f.id}','${k}')">${RATINGS[k].split(' ')[0]}</button>`).join('')}
+           </div>`}
     </div>`;
   }).join('');
+}
+// 一鍵補上賞臉評分（開罐頭當下不知道吃不吃，晚點回來按）
+function setFeedingRating(id, rating){
+  const f = (data.feedings || []).find(x => x.id === id);
+  if(!f) return;
+  f.rating = rating;
+  f.updatedAt = nowISO();
+  saveData();
+  toast(`已記錄：${ratingLabel(rating)}`);
 }
 
 // ============================ 紀錄列表 ============================
@@ -707,7 +755,7 @@ function viewHistory(){
   ${historyFilter === 'medical' ? '<div id="labChartsHolder"></div>' : ''}
   ${items.length ? items.map(i => `
     <div class="h-item">
-      <div>
+      <div ${i.src === 'feedings' ? `style="cursor:pointer;flex:1" onclick="openFeedingEditModal('${i.id}')"` : ''}>
         <div class="h-main">${i.tag}${i.title}</div>
         <div class="h-sub">${i.sub}</div>
       </div>
@@ -727,7 +775,6 @@ function cloudRestoreHint(){
   </div>`;
 }
 function setHistoryFilter(f){ historyFilter = f; render(); }
-function setHistoryFilter(f){ historyFilter = f; render(); }
 
 function buildHistoryItems(){
   const items = [];
@@ -738,7 +785,7 @@ function buildHistoryItems(){
       id:f.id, src:'feedings', ts:f.timestamp, cat:isTreat ? 'treat' : 'can',
       tag:isTreat ? '<span class="tag treat">零食</span>' : '<span class="tag">罐頭</span>',
       title:esc(productLabel(p)) + (f.rating ? '｜' + RATINGS[f.rating] : ''),
-      sub:[fmtDT(f.timestamp), f.replacedLastMeal ? '取代最後一餐' : '', f.notes, f.recordedBy && `by ${f.recordedBy}`].filter(Boolean).join('｜')
+      sub:[fmtDT(f.timestamp), f.replacedLastMeal ? '取代一餐乾糧' : '', f.rating ? '' : '⏳ 待評分', f.notes, f.recordedBy && `by ${f.recordedBy}`].filter(Boolean).join('｜')
     });
   }
   for(const s of alive(data.symptoms)){
@@ -826,7 +873,27 @@ function viewVet(){
 
   <div class="card vet-sec">
     <h3>基本狀態</h3>
-    <div class="vet-line"><div class="d">主食乾糧</div><div>${data.mainFood.brand ? esc(`${data.mainFood.brand} ${data.mainFood.flavor}`) + `（每日 ${data.mainFood.mealsPerDay} 餐，自動餵食器）` : '未設定'}</div></div>
+    ${(() => {
+      const mf = data.mainFood || {};
+      if(!mf.brand && !mf.flavor) return '<div class="vet-line"><div class="d">主食乾糧</div><div>未設定</div></div>';
+      const meals = mf.mealsPerDay || 0, g = mf.gramsPerMeal || 10;
+      const total = meals * g;
+      return `<div class="vet-line"><div class="d">主食乾糧</div><div>${esc(`${mf.brand} ${mf.flavor}`)}（自動餵食器）</div></div>
+      <div class="vet-line"><div class="d">乾糧食量</div><div>每日 ${meals} 餐 × ${g}g = <b>${total}g/日</b>${
+        meals > 1 ? `；<span class="muted">餵罐頭當天關掉一餐 → ${(meals - 1) * g}g + 罐頭一份</span>` : ''}</div></div>`;
+    })()}
+    ${(() => {
+      // 近 30 天實際餵罐頭天數，讓獸醫評估平均攝取
+      const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+      const cans = alive(data.feedings).filter(f => {
+        const pr = productById(f.productId);
+        return f.timestamp >= cutoff && (!pr || pr.category !== 'treat');
+      });
+      if(!cans.length) return '';
+      const days = new Set(cans.map(f => logicalDayKey(f.timestamp))).size;
+      const replaced = cans.filter(f => f.replacedLastMeal).length;
+      return `<div class="vet-line"><div class="d">罐頭頻率</div><div>近 30 天 ${cans.length} 份／共 ${days} 天有餵${replaced ? `（其中 ${replaced} 份取代一餐乾糧）` : ''}</div></div>`;
+    })()}
     <div class="vet-line"><div class="d">驅蟲藥</div><div>${deworm ? `最後施用 ${fmtDate(deworm.timestamp)}（${daysSince(deworm.timestamp)} 天前）` : '無紀錄'}</div></div>
     ${(() => {
       const cutoffDate = new Date(Date.now() - 30 * 86400000);
@@ -1104,6 +1171,17 @@ function viewSettings(){
   </div>
 
   <div class="card set-block">
+    <h3 style="font-size:15px">🌙 記錄日分界</h3>
+    <div class="muted">半夜才記錄當天狀況時，在這個時間之前記的都算「前一天」，
+      避免凌晨打勾被算成隔天。</div>
+    <label class="f">凌晨幾點後才算新的一天</label>
+    <select id="dayStartSel" onchange="saveDayStart(this.value)">
+      ${[0,1,2,3,4,5,6].map(h => `<option value="${h}" ${dayStartHour()===h?'selected':''}>${h === 0 ? '午夜 0 點（不調整）' : `凌晨 ${h} 點`}</option>`).join('')}
+    </select>
+    <div class="muted" style="margin-top:6px">現在記錄會算在：<b>${fmtDate(logicalToday())}</b></div>
+  </div>
+
+  <div class="card set-block">
     <h3 style="font-size:15px">🐱 寵物資料</h3>
     <label class="f">大頭照</label>
     <input type="file" accept="image/*" id="petPhotoInput" onchange="handlePetPhoto(this)">
@@ -1123,8 +1201,13 @@ function viewSettings(){
     <input id="mfBrand" value="${esc(mf.brand)}">
     <label class="f">口味</label>
     <input id="mfFlavor" value="${esc(mf.flavor)}">
-    <label class="f">每日餐數（自動餵食器）</label>
-    <input id="mfMeals" type="number" min="1" max="12" value="${mf.mealsPerDay}">
+    <div class="row2">
+      <div><label class="f">每日餐數（餵食器）</label>
+        <input id="mfMeals" type="number" min="1" max="12" value="${mf.mealsPerDay}"></div>
+      <div><label class="f">每餐克數 (g)</label>
+        <input id="mfGrams" type="number" min="1" max="200" step="1" value="${mf.gramsPerMeal || 10}"></div>
+    </div>
+    <div class="muted">目前設定：每日 ${mf.mealsPerDay} 餐 × ${mf.gramsPerMeal || 10}g = <b>${(mf.mealsPerDay || 0) * (mf.gramsPerMeal || 10)}g/日</b>；餵罐頭當天關掉一餐 → ${Math.max(0, (mf.mealsPerDay || 0) - 1) * (mf.gramsPerMeal || 10)}g + 罐頭</div>
     <button class="btn small" onclick="saveMainFood()">儲存主食設定</button>
     ${(mf.history || []).length ? `<details><summary>換糧歷史（${mf.history.length}）</summary>
       ${mf.history.slice().reverse().map(h => `<div class="muted" style="padding:4px 0">${fmtDate(h.changedAt)}｜${esc(h.brand)} ${esc(h.flavor)}</div>`).join('')}
@@ -1227,14 +1310,24 @@ function handlePetPhoto(input){
   img.src = URL.createObjectURL(file);
 }
 
+function saveDayStart(v){
+  data.settings = data.settings || {};
+  data.settings.dayStartHour = Math.max(0, Math.min(12, parseInt(v, 10) || 0));
+  data.settings.updatedAt = nowISO();
+  saveData();
+  toast(`記錄日分界：凌晨 ${data.settings.dayStartHour} 點`);
+}
+
 function saveMainFood(){
   const brand = $('#mfBrand').value.trim();
   const flavor = $('#mfFlavor').value.trim();
-  const meals = parseInt($('#mfMeals').value, 10) || 6;
+  const meals = parseInt($('#mfMeals').value, 10) || 5;
+  const grams = parseInt($('#mfGrams').value, 10) || 10;
   const changed = brand !== data.mainFood.brand || flavor !== data.mainFood.flavor;
   data.mainFood.brand = brand;
   data.mainFood.flavor = flavor;
   data.mainFood.mealsPerDay = meals;
+  data.mainFood.gramsPerMeal = grams;
   data.mainFood.updatedAt = nowISO();
   if(changed && (brand || flavor)){
     data.mainFood.history = data.mainFood.history || [];
@@ -1354,18 +1447,40 @@ function chipValue(name){
 }
 
 // ============================ 罐頭／零食 ============================
+// 多品牌輪流餵：快選清單依「最近餵食時間」排序，常餵/剛餵的一眼可見
+function lastFedAt(productId){
+  let last = '';
+  for(const f of alive(data.feedings))
+    if(f.productId === productId && f.timestamp > last) last = f.timestamp;
+  return last;
+}
+function productsByRecentUse(category){
+  return alive(data.productLibrary)
+    .filter(p => p.category === category)
+    .map(p => ({ p, t: lastFedAt(p.id) }))
+    .sort((a, b) => (a.t < b.t ? 1 : (a.t > b.t ? -1 : 0)))
+    .map(x => x.p);
+}
+function lastFedText(productId){
+  const t = lastFedAt(productId);
+  if(!t) return '沒餵過';
+  const days = Math.floor((Date.now() - new Date(t).getTime()) / 86400000);
+  return days <= 0 ? '今天餵過' : `上次 ${days} 天前`;
+}
+
 let feedingCategory = 'can';
 function openFeedingModal(category){
   feedingCategory = category;
   const label = category === 'can' ? '🥫 記錄罐頭' : '🍖 記錄零食';
-  const lib = alive(data.productLibrary).filter(p => p.category === category);
+  const lib = productsByRecentUse(category);
   openModal(`
     ${modalHead(label)}
-    <label class="f">選擇產品（點圖快選）</label>
+    <label class="f">選擇產品（最近餵過的排前面）</label>
     ${lib.length ? `<div class="prod-grid" data-chips="feedProduct" data-multi="0">
       ${lib.map(p => `<button type="button" class="prod-card" data-val="${p.id}" onclick="toggleChip(this)">
         ${p.photo ? `<img src="${p.photo}" alt="">` : `<div class="prod-noimg">${category === 'can' ? '🥫' : '🍖'}</div>`}
         <span>${esc(productLabel(p))}</span>
+        <span class="prod-last">${lastFedText(p.id)}</span>
       </button>`).join('')}
     </div>` : '<div class="muted">產品庫還是空的，先新增第一個產品吧</div>'}
     <button class="btn small sec" type="button" onclick="toggleNewProduct()">＋ 新增產品</button>
@@ -1383,11 +1498,11 @@ function openFeedingModal(category){
     </div>
     <label class="f">日期時間</label>
     <input type="datetime-local" id="feedTime" value="${localInputNow()}">
-    <label class="f">賞臉評分</label>
-    ${chipGroupHtml('feedRating', RATINGS, 'ate_all')}
+    <label class="f">賞臉評分（現在不知道可以留空，晚點在首頁一鍵補）</label>
+    ${chipGroupHtml('feedRating', RATINGS, null)}
     ${category === 'can' ? `
     <label class="f" style="display:flex;align-items:center;gap:8px;font-size:15px;color:var(--ink)">
-      <input type="checkbox" id="feedReplace" style="width:20px;height:20px"> 取代最後一餐（關掉餵食器）
+      <input type="checkbox" id="feedReplace" style="width:20px;height:20px"> 取代一餐乾糧（關掉餵食器一餐）
     </label>` : ''}
     <label class="f">備註</label>
     <input id="feedNotes" placeholder="選填">
@@ -1510,6 +1625,66 @@ async function saveFeeding(){
   saveData();
   closeModal();
   toast('已記錄 🎉');
+}
+
+// 編輯既有餵食紀錄（開罐頭先記，晚點回來補評分／改品項時間）
+function openFeedingEditModal(id){
+  const f = (data.feedings || []).find(x => x.id === id);
+  if(!f) return;
+  const prod = productById(f.productId);
+  const category = (prod && prod.category) || 'can';
+  const lib = productsByRecentUse(category);
+  const localVal = (() => {
+    const d = new Date(f.timestamp), p = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  })();
+  openModal(`
+    ${modalHead(`✏️ 編輯${category === 'can' ? '罐頭' : '零食'}紀錄`)}
+    <label class="f">產品</label>
+    <div class="prod-grid" data-chips="efProduct" data-multi="0">
+      ${lib.map(p => `<button type="button" class="prod-card ${p.id === f.productId ? 'on' : ''}" data-val="${p.id}" onclick="toggleChip(this)">
+        ${p.photo ? `<img src="${p.photo}" alt="">` : `<div class="prod-noimg">${category === 'can' ? '🥫' : '🍖'}</div>`}
+        <span>${esc(productLabel(p))}</span>
+      </button>`).join('')}
+    </div>
+    <label class="f">日期時間</label>
+    <input type="datetime-local" id="efTime" value="${localVal}">
+    <label class="f">賞臉評分</label>
+    ${chipGroupHtml('efRating', RATINGS, f.rating || null)}
+    ${category === 'can' ? `
+    <label class="f" style="display:flex;align-items:center;gap:8px;font-size:15px;color:var(--ink)">
+      <input type="checkbox" id="efReplace" style="width:20px;height:20px" ${f.replacedLastMeal ? 'checked' : ''}> 取代一餐乾糧（關掉餵食器一餐）
+    </label>` : ''}
+    <label class="f">備註</label>
+    <input id="efNotes" value="${esc(f.notes || '')}" placeholder="選填">
+    <button class="btn" onclick="saveFeedingEdit('${id}')">儲存變更</button>
+    <button class="btn sec danger" onclick="deleteFeedingFromEdit('${id}')">🗑️ 刪除這筆紀錄</button>
+  `);
+}
+function saveFeedingEdit(id){
+  const f = (data.feedings || []).find(x => x.id === id);
+  if(!f) return;
+  const pid = chipValue('efProduct');
+  if(pid) f.productId = pid;
+  const timeVal = $('#efTime').value;
+  if(timeVal) f.timestamp = new Date(timeVal).toISOString();
+  f.rating = chipValue('efRating') || '';
+  if($('#efReplace')) f.replacedLastMeal = $('#efReplace').checked;
+  f.notes = $('#efNotes').value.trim();
+  f.updatedAt = nowISO();
+  saveData();
+  closeModal();
+  toast('已更新紀錄');
+}
+function deleteFeedingFromEdit(id){
+  if(!confirm('確定刪除這筆餵食紀錄？')) return;
+  const f = (data.feedings || []).find(x => x.id === id);
+  if(!f) return;
+  f.deleted = true;
+  f.updatedAt = nowISO();
+  saveData();
+  closeModal();
+  toast('已刪除');
 }
 
 // ============================ 症狀 ============================
