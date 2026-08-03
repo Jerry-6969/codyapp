@@ -74,6 +74,12 @@
                  border-radius:var(--radius-sm);font-size:13px;}
   .health-banner.good{background:var(--ok-bg);color:var(--ok-text);}
   .health-banner.bad{background:var(--warn-bg);color:var(--warn-text);}
+  /* 未備份提示 */
+  .sync-warn{display:flex;align-items:center;justify-content:space-between;gap:10px;
+             background:var(--warn-bg);color:var(--warn-text);border:0.5px solid var(--warn);
+             border-radius:var(--radius-sm);padding:11px 12px;margin-top:12px;font-size:13px;cursor:pointer;}
+  .sync-warn-btn{background:var(--warn);color:#fff;border-radius:20px;padding:4px 12px;
+                 font-size:12px;white-space:nowrap;flex:0 0 auto;}
 
   /* ---------- care cards ---------- */
   .care-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
@@ -453,8 +459,20 @@ function loadDevice(){
 }
 function saveDevice(){ localStorage.setItem(LS_DEVICE, JSON.stringify(device)); }
 
+// 「本機有變更尚未上雲」的判定：跨重開仍有效（比對最後變更時間 vs 最後同步時間）
+function markLocalChange(){
+  device.lastLocalChange = nowISO();
+  saveDevice();
+}
+function hasUnsyncedChanges(){
+  const local = device.lastLocalChange || '';
+  const synced = (data.metadata || {}).lastSync || '';
+  return !!local && local > synced;
+}
+
 function saveData(opts = {}){
   localStorage.setItem(LS_KEY, JSON.stringify(data));
+  if(opts.fromSync !== true) markLocalChange();
   if(opts.rerender !== false) render();
   if(opts.sync !== false) scheduleSync();
 }
@@ -632,6 +650,8 @@ function viewHome(){
       : `<div class="health-banner good">✓ 近 7 天無異常症狀</div>`}
   </div>
 
+  ${unsyncedBannerHtml()}
+
   <h2>今日檢查${isPastMidnightSession() ? ` · ${fmtShortDate(logicalToday())}（昨晚）` : ''}</h2>
   <div class="card">
     ${isPastMidnightSession()
@@ -704,6 +724,15 @@ function viewHome(){
 
 const RATING_PILL = { ate_all:'ok', half:'warn', refused:'danger' };
 function ratingLabel(r){ return r ? RATINGS[r].replace(/^\S+\s/, '') : ''; }
+
+// 有本機變更還沒上雲時，首頁明確提示 + 一鍵備份（避免紀錄只存在這台裝置）
+function unsyncedBannerHtml(){
+  if(!hasUnsyncedChanges() || !device.folderId) return '';
+  return `<div class="sync-warn no-print" onclick="syncNow()">
+    <span>⚠️ 有紀錄還沒備份到雲端${data.metadata.lastSync ? `（上次備份 ${fmtDT(data.metadata.lastSync)}）` : ''}</span>
+    <span class="sync-warn-btn">立即備份</span>
+  </div>`;
+}
 
 function recentFeedHtml(){
   const feeds = alive(data.feedings).sort((a,b) => (a.timestamp > b.timestamp ? -1 : 1)).slice(0, 5);
@@ -1932,12 +1961,15 @@ let accessToken = null;
 let tokenExpiry = 0;
 let syncTimer = null;
 let syncing = false;
+let syncQueued = false;
 
 function syncStatusText(){
   if(syncing) return '同步中…';
   if(!device.clientId || !device.folderId) return '尚未設定（填入 Client ID 與資料夾 ID）';
-  if(accessToken && Date.now() < tokenExpiry) return `✅ 已連接${data.metadata.lastSync ? `｜上次同步 ${fmtDT(data.metadata.lastSync)}` : ''}`;
-  return data.metadata.lastSync ? `未登入｜上次同步 ${fmtDT(data.metadata.lastSync)}` : '未登入';
+  const last = data.metadata.lastSync ? `｜上次同步 ${fmtDT(data.metadata.lastSync)}` : '';
+  if(hasUnsyncedChanges()) return `⚠️ 有紀錄尚未備份到雲端${last}`;
+  if(accessToken && Date.now() < tokenExpiry) return `✅ 已連接${last}`;
+  return data.metadata.lastSync ? `已備份${last}` : '未登入';
 }
 function setSyncStatus(text, cls){
   const el = document.getElementById('syncStatus');
@@ -1963,6 +1995,8 @@ function getAccessToken(){
         if(resp && resp.access_token){
           accessToken = resp.access_token;
           tokenExpiry = Date.now() + (parseInt(resp.expires_in, 10) || 3600) * 1000;
+          // 記住這台裝置授權過 → 之後開啟／存檔都能靜默續期，不必再手動登入
+          if(!device.everAuthorized){ device.everAuthorized = true; saveDevice(); }
           resolve(accessToken);
         }else{
           reject(new Error('取得授權失敗'));
@@ -2018,48 +2052,63 @@ async function driveUpdate(fileId, content){
     body: content
   });
 }
-async function syncNow(){
-  if(syncing) return;
+async function syncNow(opts = {}){
+  if(syncing){ syncQueued = true; return; }   // 同步中又有新變更 → 排隊，不丟掉
   if(!device.clientId || !device.folderId){
     setSyncStatus('請先填入 Client ID 與共用資料夾 ID', 'err');
     return;
   }
   syncing = true;
-  setSyncStatus('同步中…');
+  if(!opts.silent) setSyncStatus('同步中…');
   try{
     const file = await driveFindFile();
+    const stamp = nowISO();
     if(file){
       const remote = await driveDownload(file.id);
       data = mergeData(data, remote);
-      data.metadata.lastSync = nowISO();
+      data.metadata.lastSync = stamp;
       await driveUpdate(file.id, JSON.stringify(data, null, 2));
     }else{
-      data.metadata.lastSync = nowISO();
+      data.metadata.lastSync = stamp;
       await driveCreate(JSON.stringify(data, null, 2));
     }
+    // 上傳確認成功後才寫入本機（失敗時 lastSync 不會被誤記為已備份）
     localStorage.setItem(LS_KEY, JSON.stringify(data));
     syncing = false;
     render();
     setSyncStatus(`✅ 同步完成 ${fmtDT(data.metadata.lastSync)}`, 'ok');
-    toast('☁️ 已同步 Google Drive');
+    if(!opts.silent) toast('☁️ 已同步 Google Drive');
   }catch(e){
     syncing = false;
+    data.metadata.lastSync = (JSON.parse(localStorage.getItem(LS_KEY) || '{}').metadata || {}).lastSync || '';
     console.error(e);
-    setSyncStatus('❌ ' + e.message, 'err');
+    if(!opts.silent) setSyncStatus('❌ ' + e.message, 'err');
+    else setSyncStatus(syncStatusText());
   }
+  if(syncQueued){ syncQueued = false; setTimeout(() => syncNow({ silent:true }), 800); }
 }
 function connectAndSync(){
   saveDriveSettings();
   syncNow();
 }
-// 存檔後若已登入，延遲自動同步（離線或未登入則略過，不影響本機記錄）
+// 存檔後自動同步：只要這台裝置授權過，就靜默續期權杖再上傳，
+// 使用者不必每次手動按「登入並同步」。離線或從未授權才會留在本機。
 function scheduleSync(){
-  if(!accessToken || Date.now() >= tokenExpiry) return;
   if(!navigator.onLine) return;
+  if(!device.clientId || !device.folderId) return;
+  const hasToken = accessToken && Date.now() < tokenExpiry;
+  if(!hasToken && !device.everAuthorized) return;   // 從未授權過：不打擾，靠畫面提示
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => syncNow(), 4000);
+  syncTimer = setTimeout(() => syncNow({ silent:true }), 3000);
 }
 window.addEventListener('online', () => scheduleSync());
+// 切換到別的 App／鎖屏前，以及回到前景時，都嘗試把未備份的變更送上雲
+document.addEventListener('visibilitychange', () => {
+  if(hasUnsyncedChanges()) scheduleSync();
+});
+window.addEventListener('pagehide', () => {
+  if(hasUnsyncedChanges() && accessToken && Date.now() < tokenExpiry) syncNow({ silent:true });
+});
 
 // 開啟 App 時自動從 Drive 拉回資料（追加合併，只會補齊不會清空）。
 // 用靜默授權（prompt:''）：曾登入過的裝置會自動同步；未登入則安靜略過，
