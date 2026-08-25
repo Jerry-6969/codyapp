@@ -173,6 +173,39 @@
   .h-main{font-size:14px;}
   .h-sub{font-size:12px;color:var(--text2);margin-top:3px;white-space:pre-wrap;}
 
+  /* ---------- 今晚的罐頭（一鍵記錄） ---------- */
+  .qf-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  .qf-card{border:0.5px solid var(--border);border-radius:var(--radius-sm);background:var(--card);
+           padding:6px;display:flex;flex-direction:column;align-items:center;gap:4px;
+           font-size:11px;color:var(--text);}
+  .qf-card img,.qf-noimg{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;}
+  .qf-noimg{display:flex;align-items:center;justify-content:center;font-size:24px;
+            background:var(--accent-bg);color:var(--accent-text);}
+  .qf-card span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
+  .qf-more{color:var(--text2);}
+
+  /* ---------- 紀錄頁：按天分組 ---------- */
+  .day-card{background:var(--card);border:0.5px solid var(--border);border-radius:14px;
+            padding:12px 14px;margin-bottom:10px;}
+  .day-card.abn{border-color:var(--danger);}
+  .day-head{display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer;}
+  .day-date{font-size:14px;}
+  .day-badge{font-size:11px;padding:3px 10px;border-radius:20px;white-space:nowrap;}
+  .day-badge.ok{background:var(--ok-bg);color:var(--ok-text);}
+  .day-badge.abn{background:var(--danger-bg);color:var(--danger-text);}
+  .day-routine{font-size:12px;color:var(--text2);margin-top:8px;line-height:1.7;cursor:pointer;}
+  .ev{margin-top:10px;padding:10px;border-radius:10px;background:var(--danger-bg);}
+  .ev-t{font-size:13px;color:var(--danger-text);}
+  .ev-n{font-size:12px;color:var(--text2);margin-top:3px;}
+  .ev-photos{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+  .ev-photos img{width:64px;height:64px;object-fit:cover;border-radius:8px;cursor:pointer;}
+  .ev .del{background:none;color:var(--danger-text);font-size:12px;padding:6px 0 0;}
+  .day-detail{margin-top:10px;border-top:0.5px dashed var(--border);padding-top:6px;}
+  .sym-preview{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+  .sym-preview img{width:72px;height:72px;object-fit:cover;border-radius:8px;}
+  .vet-photos{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+  .vet-photos img{width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:pointer;}
+
   /* ---------- vet mode ---------- */
   .vet-sec{margin-bottom:12px;}
   .vet-sec h3{font-size:14px;font-weight:500;margin-bottom:8px;color:var(--accent-text);}
@@ -672,6 +705,8 @@ function viewHome(){
     ${dailyStreak() > 0 ? `<div class="muted" style="text-align:center;margin-top:10px">已連續 ${dailyStreak()} 天全部正常</div>` : ''}
   </div>
 
+  ${quickFeedHtml()}
+
   <h2>照護提醒</h2>
   <div class="care-row">
     ${defs.map(d => {
@@ -725,6 +760,36 @@ function viewHome(){
 const RATING_PILL = { ate_all:'ok', half:'warn', refused:'danger' };
 function ratingLabel(r){ return r ? RATINGS[r].replace(/^\S+\s/, '') : ''; }
 
+// 今晚的罐頭：常餵的直接點一下就記完，不必開視窗、不必拍照
+function quickFeedHtml(){
+  const lib = productsByRecentUse('can').slice(0, 3);
+  if(!lib.length) return '';
+  const fedToday = alive(data.feedings).filter(f => logicalDayKey(f.timestamp) === logicalToday());
+  return `
+  <h2>今晚的罐頭${fedToday.length ? ` · 已記 ${fedToday.length} 份` : ''}</h2>
+  <div class="qf-row">
+    ${lib.map(p => `<button class="qf-card" onclick="quickFeed('${p.id}')">
+      ${p.photo ? `<img src="${p.photo}" alt="">` : '<div class="qf-noimg">🥫</div>'}
+      <span>${esc(productLabel(p))}</span>
+    </button>`).join('')}
+    <button class="qf-card qf-more" onclick="openFeedingModal('can')">
+      <div class="qf-noimg">＋</div><span>其他／新增</span>
+    </button>
+  </div>`;
+}
+function quickFeed(productId){
+  const p = productById(productId);
+  if(!p) return;
+  data.feedings.push({
+    id: uid(), timestamp: nowISO(), productId,
+    rating: '',                 // 吃完再回來補
+    replacedLastMeal: true,     // 餵罐頭就會關掉一餐乾糧
+    notes: '', recordedBy: me(), updatedAt: nowISO()
+  });
+  saveData();
+  toast(`已記錄 ${productLabel(p)}　吃完回來補評分`);
+}
+
 // 有本機變更還沒上雲時，首頁明確提示 + 一鍵備份（避免紀錄只存在這台裝置）
 function unsyncedBannerHtml(){
   if(!hasUnsyncedChanges() || !device.folderId) return '';
@@ -770,17 +835,119 @@ function setFeedingRating(id, rating){
 
 // ============================ 紀錄列表 ============================
 let historyFilter = 'all';
+let expandedDays = new Set();
+
+function toggleDay(key){
+  if(expandedDays.has(key)) expandedDays.delete(key); else expandedDays.add(key);
+  render();
+}
+// 每天一張卡：異常事件直接展開（含照片），例行的事收成一行
+function viewHistoryByDay(onlyAbnormal){
+  const days = new Map();
+  const push = (key, bucket, val) => {
+    if(!days.has(key)) days.set(key, { syms:[], feeds:[], cares:[], others:[], check:null });
+    days.get(key)[bucket].push(val);
+  };
+  for(const s of alive(data.symptoms)) push(logicalDayKey(s.timestamp), 'syms', s);
+  for(const f of alive(data.feedings)) push(logicalDayKey(f.timestamp), 'feeds', f);
+  for(const c of alive(data.careTasks.logs)) push(logicalDayKey(c.timestamp), 'cares', c);
+  for(const m of alive(data.medical)) push(m.date, 'others', { kind:'med', o:m });
+  for(const w of alive(data.weights)) push(w.date, 'others', { kind:'wt', o:w });
+  for(const c of (data.dailyChecks || [])){
+    if(!days.has(c.date)) days.set(c.date, { syms:[], feeds:[], cares:[], others:[], check:null });
+    days.get(c.date).check = c;
+  }
+
+  let keys = [...days.keys()].sort().reverse();
+  if(onlyAbnormal) keys = keys.filter(k => days.get(k).syms.length);
+  if(!keys.length){
+    return `<div class="empty">${onlyAbnormal ? '太好了，完全沒有異常紀錄 ✅' : '還沒有任何紀錄'}</div>${cloudRestoreHint()}`;
+  }
+
+  return keys.map(k => {
+    const d = days.get(k);
+    const abnormal = d.syms.length > 0;
+    const open = expandedDays.has(k);
+    const dt = new Date(k + 'T12:00:00');
+    const wd = ['週日','週一','週二','週三','週四','週五','週六'][dt.getDay()];
+    const badge = abnormal
+      ? `<span class="day-badge abn">⚠️ ${[...new Set(d.syms.map(s => SYMPTOM_TYPES[s.type] || s.type))].join('、')}</span>`
+      : `<span class="day-badge ok">✓ 正常</span>`;
+
+    // 例行摘要行
+    const chk = d.check;
+    const chkTxt = chk ? [chk.food && '🍚', chk.pee && '💧', chk.poop && '💩'].filter(Boolean).join(' ') : '';
+    const feedTxt = d.feeds.map(f => {
+      const p = productById(f.productId);
+      return `🥫 ${productLabel(p)}${f.rating ? `（${ratingLabel(f.rating)}）` : '（待評分）'}`;
+    }).join('　');
+    const careTxt = d.cares.map(c => {
+      const def = (data.careTasks.definitions || []).find(x => x.id === c.taskId);
+      return `✨ ${def ? def.name : c.taskId}`;
+    }).join('　');
+    const otherTxt = d.others.map(x => x.kind === 'wt' ? `⚖️ ${x.o.kg} kg` : `🏥 ${x.o.reason || '就診'}`).join('　');
+    const routine = [chkTxt, feedTxt, careTxt, otherTxt].filter(Boolean).join('　·　');
+
+    return `<div class="day-card ${abnormal ? 'abn' : ''}">
+      <div class="day-head" onclick="toggleDay('${k}')">
+        <span class="day-date">${dt.getMonth()+1}/${dt.getDate()} ${wd}</span>
+        ${badge}
+      </div>
+      ${d.syms.map(s => `<div class="ev">
+        <div class="ev-t">${fmtDT(s.timestamp).split(' ')[1] || ''} ${esc(symptomText(s))}
+          <span class="sev ${s.severity}">${SEVERITIES[s.severity] || ''}</span></div>
+        ${s.notes ? `<div class="ev-n">${esc(s.notes)}</div>` : ''}
+        ${symptomPhotosHtml(s)}
+        ${open ? `<button class="del" onclick="deleteRecord('symptoms','${s.id}')">🗑️ 刪除這筆</button>` : ''}
+      </div>`).join('')}
+      ${routine ? `<div class="day-routine" onclick="toggleDay('${k}')">${routine}</div>` : ''}
+      ${open ? `<div class="day-detail">
+        ${d.feeds.map(f => {
+          const p = productById(f.productId);
+          return `<div class="h-item" style="margin:6px 0">
+            <div style="cursor:pointer;flex:1" onclick="openFeedingEditModal('${f.id}')">
+              <div class="h-main">${(p && p.category === 'treat') ? '<span class="tag treat">零食</span>' : '<span class="tag">罐頭</span>'}${esc(productLabel(p))}${f.rating ? '｜' + RATINGS[f.rating] : '｜⏳ 待評分'}</div>
+              <div class="h-sub">${fmtDT(f.timestamp)}${f.recordedBy ? '｜by ' + f.recordedBy : ''}</div>
+            </div>
+            <button class="del" onclick="deleteRecord('feedings','${f.id}')">🗑️</button>
+          </div>`;
+        }).join('')}
+        ${d.cares.map(c => {
+          const def = (data.careTasks.definitions || []).find(x => x.id === c.taskId);
+          return `<div class="h-item" style="margin:6px 0">
+            <div><div class="h-main"><span class="tag care">照護</span>${esc(def ? def.name : c.taskId)}</div>
+            <div class="h-sub">${fmtDT(c.timestamp)}${c.recordedBy ? '｜by ' + c.recordedBy : ''}</div></div>
+            <button class="del" onclick="deleteRecord('careLogs','${c.id}')">🗑️</button>
+          </div>`;
+        }).join('')}
+        ${d.others.map(x => x.kind === 'wt'
+          ? `<div class="h-item" style="margin:6px 0"><div><div class="h-main"><span class="tag wt">體重</span>${x.o.kg} kg</div>
+             <div class="h-sub">${fmtDate(x.o.date)}</div></div>
+             <button class="del" onclick="deleteRecord('weights','${x.o.id}')">🗑️</button></div>`
+          : `<div class="h-item" style="margin:6px 0"><div><div class="h-main"><span class="tag med">醫療</span>${esc(x.o.reason || '就診')}</div>
+             <div class="h-sub">${fmtDate(x.o.date)}${x.o.clinic ? '｜' + esc(x.o.clinic) : ''}</div></div>
+             <button class="del" onclick="deleteRecord('medical','${x.o.id}')">🗑️</button></div>`).join('')}
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
 function viewHistory(){
   const filters = [
-    ['all','全部'], ['can','罐頭'], ['treat','零食'], ['symptom','症狀'],
+    ['all','全部'], ['abnormal','⚠️ 只看異常'], ['can','罐頭'], ['treat','零食'],
     ['care','照護'], ['medical','醫療'], ['weight','體重']
   ];
-  const items = buildHistoryItems().filter(i => historyFilter === 'all' || i.cat === historyFilter);
-  return `
+  const bar = `
   <h1 style="font-size:20px;margin:6px 0 12px">📋 所有紀錄</h1>
   <div class="filter-bar">
     ${filters.map(([k,l]) => `<button class="chip ${historyFilter===k?'on':''}" onclick="setHistoryFilter('${k}')">${l}</button>`).join('')}
-  </div>
+  </div>`;
+  // 全部／只看異常 → 按天分組；選特定分類 → 傳統平鋪清單
+  if(historyFilter === 'all' || historyFilter === 'abnormal')
+    return bar + viewHistoryByDay(historyFilter === 'abnormal');
+
+  const items = buildHistoryItems().filter(i => i.cat === historyFilter);
+  return bar + `
   ${historyFilter === 'medical' ? '<div id="labChartsHolder"></div>' : ''}
   ${items.length ? items.map(i => `
     <div class="h-item">
@@ -940,7 +1107,8 @@ function viewVet(){
     ${syms.length ? syms.map(s => `<div class="vet-line"><div class="d">${fmtDT(s.timestamp)}</div>
         <div>${esc(symptomText(s))}
         <span class="sev ${s.severity}">${SEVERITIES[s.severity] || ''}</span>
-        ${s.notes ? `<span class="muted"> ${esc(s.notes)}</span>` : ''}</div></div>`).join('')
+        ${s.notes ? `<span class="muted"> ${esc(s.notes)}</span>` : ''}
+        ${symptomPhotosHtml(s, 'vet-photos')}</div></div>`).join('')
       : '<div class="muted">最近 30 天無症狀紀錄 ✅</div>'}
   </div>
 
@@ -1732,17 +1900,38 @@ function openSymptomModal(presetType){
     </div>
     <label class="f">嚴重程度</label>
     ${chipGroupHtml('symSeverity', SEVERITIES, 'mild')}
+    <label class="f">📷 拍照存證（最多 3 張，給醫生對照用）</label>
+    <input type="file" accept="image/*" capture="environment" multiple id="symPhotos" onchange="previewSymPhotos(this)">
+    <div id="symPhotoPreview" class="sym-preview"></div>
     <label class="f">日期時間</label>
     <input type="datetime-local" id="symTime" value="${localInputNow()}">
     <label class="f">備註</label>
-    <input id="symNotes" placeholder="選填">
+    <input id="symNotes" placeholder="選填，例如：吐完精神還好">
     <button class="btn" onclick="saveSymptom()">儲存症狀紀錄</button>
   `);
 }
-function saveSymptom(){
+function previewSymPhotos(input){
+  const box = $('#symPhotoPreview');
+  if(!box) return;
+  const files = [...(input.files || [])].slice(0, 3);
+  box.innerHTML = files.map(f => `<img src="${URL.createObjectURL(f)}" alt="">`).join('')
+    + (input.files.length > 3 ? '<div class="muted">（只會存前 3 張）</div>' : '');
+}
+async function saveSymptom(){
   const type = chipValue('symType');
   if(!type){ alert('請選擇症狀類型'); return; }
   const timeVal = $('#symTime').value;
+  const files = $('#symPhotos') ? [...($('#symPhotos').files || [])].slice(0, 3) : [];
+  const photos = [];
+  for(const file of files){
+    try{
+      const photoId = uid();
+      // 小縮圖存進同步資料（離線也看得到、Phoebe 同步後立刻看得到）
+      photos.push({ id:photoId, thumb: await fileToResizedDataURL(file, 220, 0.7), fileId:'' });
+      // 原圖暫存本機，連線後自動上傳 Drive（不塞進 cody-data.json 以免膨脹）
+      queuePendingPhoto(photoId, await fileToResizedDataURL(file, 1600, 0.82));
+    }catch(e){ console.error('照片處理失敗', e); }
+  }
   data.symptoms.push({
     id: uid(),
     timestamp: timeVal ? new Date(timeVal).toISOString() : nowISO(),
@@ -1751,12 +1940,103 @@ function saveSymptom(){
     urineContent: type === 'urine' ? (chipValue('urineContent') || '') : '',
     severity: chipValue('symSeverity') || 'mild',
     notes: $('#symNotes').value.trim(),
+    photos,
     recordedBy: me(),
     updatedAt: nowISO()
   });
   saveData();
   closeModal();
-  toast('已記錄症狀');
+  toast(photos.length ? `已記錄症狀（${photos.length} 張照片）` : '已記錄症狀');
+  if(photos.length) uploadPendingPhotos();
+}
+
+// ---- 症狀照片：原圖暫存本機 → 連線後補傳 Drive ----
+const PENDING_PHOTOS_KEY = 'codyapp-pending-photos';
+function pendingPhotos(){
+  try{ return JSON.parse(localStorage.getItem(PENDING_PHOTOS_KEY)) || {}; }
+  catch(e){ return {}; }
+}
+function queuePendingPhoto(id, dataUrl){
+  const q = pendingPhotos();
+  q[id] = dataUrl;
+  try{ localStorage.setItem(PENDING_PHOTOS_KEY, JSON.stringify(q)); }
+  catch(e){ console.error('本機空間不足，原圖未暫存（縮圖仍保留）', e); }
+}
+function dropPendingPhoto(id){
+  const q = pendingPhotos();
+  delete q[id];
+  localStorage.setItem(PENDING_PHOTOS_KEY, JSON.stringify(q));
+}
+function findSymptomPhoto(photoId){
+  for(const s of (data.symptoms || []))
+    for(const ph of (s.photos || []))
+      if(ph.id === photoId) return ph;
+  return null;
+}
+let uploadingPhotos = false;
+async function uploadPendingPhotos(){
+  if(uploadingPhotos) return;
+  const q = pendingPhotos();
+  const ids = Object.keys(q);
+  if(!ids.length) return;
+  if(!navigator.onLine || !device.folderId) return;
+  if(!accessToken && !device.everAuthorized) return;
+  uploadingPhotos = true;
+  try{
+    const folderId = await drivePhotosFolder();
+    for(const id of ids){
+      const ph = findSymptomPhoto(id);
+      if(!ph){ dropPendingPhoto(id); continue; }   // 該症狀已被刪除
+      if(ph.fileId){ dropPendingPhoto(id); continue; }
+      const blob = await (await fetch(q[id])).blob();
+      const boundary = 'codyapp' + Math.random().toString(36).slice(2);
+      const meta = { name:`symptom-${id}.jpg`, parents:[folderId] };
+      const body = new Blob([
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: image/jpeg\r\n\r\n`,
+        blob, `\r\n--${boundary}--`
+      ]);
+      const resp = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
+        method:'POST', headers:{ 'Content-Type':`multipart/related; boundary=${boundary}` }, body
+      });
+      const created = await resp.json();
+      if(created && created.id){
+        ph.fileId = created.id;
+        const sym = (data.symptoms || []).find(s => (s.photos || []).some(x => x.id === id));
+        if(sym) sym.updatedAt = nowISO();
+        dropPendingPhoto(id);
+        saveData({ rerender:false });
+      }
+    }
+  }catch(e){
+    console.error('照片上傳延後重試', e);
+  }
+  uploadingPhotos = false;
+}
+// 檢視症狀照片：優先抓 Drive 原圖，抓不到就放大本機縮圖
+async function openSymptomPhoto(photoId){
+  const ph = findSymptomPhoto(photoId);
+  if(!ph) return;
+  const local = pendingPhotos()[photoId];
+  openModal(`${modalHead('📷 症狀照片')}
+    <div id="symPhotoBox"><img src="${local || ph.thumb}" style="width:100%;border-radius:12px" alt=""></div>
+    <div class="muted" id="symPhotoNote" style="margin-top:8px">${ph.fileId ? '載入原圖中…' : (local ? '原圖在本機，連線後會自動備份到 Drive' : '')}</div>`);
+  if(!ph.fileId || local) return;
+  try{
+    const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files/${ph.fileId}?alt=media&supportsAllDrives=true`);
+    const url = URL.createObjectURL(await resp.blob());
+    const box = $('#symPhotoBox');
+    if(box) box.innerHTML = `<img src="${url}" style="width:100%;border-radius:12px" alt="">`;
+    const note = $('#symPhotoNote');
+    if(note) note.textContent = '';
+  }catch(e){
+    const note = $('#symPhotoNote');
+    if(note) note.textContent = '無法載入原圖（需登入 Drive），目前顯示縮圖';
+  }
+}
+function symptomPhotosHtml(s, cls){
+  if(!(s.photos || []).length) return '';
+  return `<div class="${cls || 'ev-photos'}">${s.photos.map(ph =>
+    `<img src="${ph.thumb}" onclick="event.stopPropagation();openSymptomPhoto('${ph.id}')" alt="">`).join('')}</div>`;
 }
 
 // ============================ 照護 ============================
@@ -2078,6 +2358,7 @@ async function syncNow(opts = {}){
     render();
     setSyncStatus(`✅ 同步完成 ${fmtDT(data.metadata.lastSync)}`, 'ok');
     if(!opts.silent) toast('☁️ 已同步 Google Drive');
+    uploadPendingPhotos();   // 順道補傳離線時拍的症狀原圖
   }catch(e){
     syncing = false;
     data.metadata.lastSync = (JSON.parse(localStorage.getItem(LS_KEY) || '{}').metadata || {}).lastSync || '';
